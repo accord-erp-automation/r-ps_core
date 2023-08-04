@@ -83,6 +83,14 @@ Important fact:
 - Rust opens the slave device path with `SerialPortProbe`.
 - The probe must return `parsed_weight=true` and `has_data=true`.
 
+`rp-scale` also provides a Rust scale simulator:
+
+- Binary: `rp-scale-sim-scale`
+- It creates a PTY slave device.
+- It prints the slave device path as `device=/dev/...`.
+- It writes scale frames such as `1.250 kg ST\r` to the PTY.
+- `rp-scale-probe-serial` must detect this PTY as a valid scale source.
+
 ## Parser Contract
 
 Production regex:
