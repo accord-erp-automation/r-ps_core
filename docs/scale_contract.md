@@ -90,6 +90,7 @@ Important fact:
 - It prints the slave device path as `device=/dev/...`.
 - It writes scale frames such as `1.250 kg ST\r` to the PTY.
 - `rp-scale-probe-serial` must detect this PTY as a valid scale source.
+- The batch scenario ramps between weights, holds stable values for realistic periods, and returns to zero between some movements.
 
 ## Parser Contract
 

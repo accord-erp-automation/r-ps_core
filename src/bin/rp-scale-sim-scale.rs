@@ -25,7 +25,7 @@ fn unix_main() -> Result<(), String> {
 
     let mut master = pty.master;
     let _keep_slave_open = pty.slave;
-    let mut index = 0_usize;
+    let mut sequencer = SampleSequencer::new(cfg.samples());
     let mut sent = 0_u64;
 
     loop {
@@ -33,7 +33,7 @@ fn unix_main() -> Result<(), String> {
             break;
         }
 
-        let sample = cfg.sample(index);
+        let sample = sequencer.next();
         let frame = format_frame(sample.weight, &cfg.unit, sample.stable);
         if let Err(err) = master.write_all(frame.as_bytes())
             && err.raw_os_error() != Some(libc::EIO)
@@ -43,7 +43,6 @@ fn unix_main() -> Result<(), String> {
         let _ = master.flush();
 
         sent += 1;
-        index = index.wrapping_add(1);
         thread::sleep(Duration::from_millis(cfg.interval_ms));
     }
 
@@ -99,16 +98,16 @@ impl SimConfig {
         Ok(cfg)
     }
 
-    fn sample(&self, index: usize) -> ScaleSample {
+    fn samples(&self) -> Vec<ScaleSample> {
         if let Some(weight) = self.weight {
-            return ScaleSample {
+            return vec![ScaleSample {
                 weight,
                 stable: self.stable.unwrap_or(true),
-            };
+                repeat: stable_repeat(self.interval_ms, 1_500),
+            }];
         }
 
-        let samples = scenario_samples(&self.scenario);
-        samples[index % samples.len()]
+        scenario_samples(&self.scenario, self.interval_ms)
     }
 }
 
@@ -117,6 +116,45 @@ impl SimConfig {
 struct ScaleSample {
     weight: f64,
     stable: bool,
+    repeat: u16,
+}
+
+#[cfg(unix)]
+struct SampleSequencer {
+    samples: Vec<ScaleSample>,
+    index: usize,
+    remaining: u16,
+}
+
+#[cfg(unix)]
+impl SampleSequencer {
+    fn new(samples: Vec<ScaleSample>) -> Self {
+        Self {
+            samples,
+            index: 0,
+            remaining: 0,
+        }
+    }
+
+    fn next(&mut self) -> ScaleSample {
+        if self.samples.is_empty() {
+            return ScaleSample {
+                weight: 0.0,
+                stable: true,
+                repeat: 1,
+            };
+        }
+        if self.remaining == 0 {
+            self.remaining = self.samples[self.index].repeat.max(1);
+        }
+
+        let sample = self.samples[self.index];
+        self.remaining -= 1;
+        if self.remaining == 0 {
+            self.index = (self.index + 1) % self.samples.len();
+        }
+        sample
+    }
 }
 
 #[cfg(unix)]
@@ -164,55 +202,98 @@ fn open_pty() -> Result<Pty, String> {
 }
 
 #[cfg(unix)]
-fn scenario_samples(name: &str) -> &'static [ScaleSample] {
+fn scenario_samples(name: &str, interval_ms: u64) -> Vec<ScaleSample> {
     match name.trim().to_ascii_lowercase().as_str() {
-        "idle" => &[
-            ScaleSample {
-                weight: 0.0,
-                stable: true,
-            },
-            ScaleSample {
-                weight: 0.002,
-                stable: true,
-            },
-        ],
-        "stress" => &[
-            ScaleSample {
-                weight: 0.0,
-                stable: true,
-            },
-            ScaleSample {
-                weight: 0.320,
-                stable: false,
-            },
-            ScaleSample {
-                weight: 1.870,
-                stable: false,
-            },
-            ScaleSample {
-                weight: 1.842,
-                stable: true,
-            },
-        ],
-        _ => &[
-            ScaleSample {
-                weight: 0.0,
-                stable: true,
-            },
-            ScaleSample {
-                weight: 1.250,
-                stable: false,
-            },
-            ScaleSample {
-                weight: 1.250,
-                stable: true,
-            },
-            ScaleSample {
-                weight: 0.0,
-                stable: true,
-            },
-        ],
+        "idle" => idle_samples(interval_ms),
+        "stress" => stress_samples(interval_ms),
+        _ => batch_samples(interval_ms),
     }
+}
+
+#[cfg(unix)]
+fn batch_samples(interval_ms: u64) -> Vec<ScaleSample> {
+    let stable = stable_repeat(interval_ms, 1_600);
+    let zero = stable_repeat(interval_ms, 1_200);
+    let mut out = Vec::new();
+    push_hold(&mut out, 0.0, true, zero);
+    push_ramp(&mut out, 0.0, 1.250, 5);
+    push_hold(&mut out, 1.250, false, 2);
+    push_hold(&mut out, 1.250, true, stable);
+    push_ramp(&mut out, 1.250, 0.0, 4);
+    push_hold(&mut out, 0.0, true, zero);
+    push_ramp(&mut out, 0.0, 2.750, 7);
+    push_hold(&mut out, 2.750, false, 2);
+    push_hold(&mut out, 2.750, true, stable_repeat(interval_ms, 2_000));
+    push_ramp(&mut out, 2.750, 0.0, 5);
+    push_hold(&mut out, 0.0, true, zero);
+    push_ramp(&mut out, 0.0, 0.640, 3);
+    push_hold(&mut out, 0.640, true, stable);
+    push_ramp(&mut out, 0.640, 3.180, 6);
+    push_hold(&mut out, 3.180, false, 3);
+    push_hold(&mut out, 3.180, true, stable_repeat(interval_ms, 1_800));
+    out
+}
+
+#[cfg(unix)]
+fn stress_samples(interval_ms: u64) -> Vec<ScaleSample> {
+    let mut out = Vec::new();
+    push_hold(&mut out, 0.0, true, stable_repeat(interval_ms, 700));
+    push_ramp(&mut out, 0.0, 1.870, 5);
+    push_hold(&mut out, 1.930, false, 1);
+    push_hold(&mut out, 1.810, false, 1);
+    push_hold(&mut out, 1.842, true, stable_repeat(interval_ms, 1_200));
+    push_ramp(&mut out, 1.842, 0.280, 4);
+    push_ramp(&mut out, 0.280, 2.420, 4);
+    push_hold(&mut out, 2.420, true, stable_repeat(interval_ms, 1_000));
+    push_ramp(&mut out, 2.420, 0.0, 5);
+    push_hold(&mut out, 0.0, true, stable_repeat(interval_ms, 800));
+    out
+}
+
+#[cfg(unix)]
+fn idle_samples(interval_ms: u64) -> Vec<ScaleSample> {
+    vec![
+        ScaleSample {
+            weight: 0.0,
+            stable: true,
+            repeat: stable_repeat(interval_ms, 2_000),
+        },
+        ScaleSample {
+            weight: 0.002,
+            stable: true,
+            repeat: stable_repeat(interval_ms, 1_500),
+        },
+    ]
+}
+
+#[cfg(unix)]
+fn push_ramp(out: &mut Vec<ScaleSample>, from: f64, to: f64, steps: u16) {
+    for step in 1..=steps {
+        let p = f64::from(step) / f64::from(steps);
+        let weight = round3(from + (to - from) * p);
+        push_hold(out, weight, false, 1);
+    }
+}
+
+#[cfg(unix)]
+fn push_hold(out: &mut Vec<ScaleSample>, weight: f64, stable: bool, repeat: u16) {
+    out.push(ScaleSample {
+        weight: round3(weight),
+        stable,
+        repeat: repeat.max(1),
+    });
+}
+
+#[cfg(unix)]
+fn stable_repeat(interval_ms: u64, duration_ms: u64) -> u16 {
+    let interval = interval_ms.max(1);
+    let repeat = duration_ms.div_ceil(interval).max(1);
+    repeat.min(u64::from(u16::MAX)) as u16
+}
+
+#[cfg(unix)]
+fn round3(value: f64) -> f64 {
+    (value * 1000.0).round() / 1000.0
 }
 
 #[cfg(unix)]
