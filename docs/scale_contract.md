@@ -8,6 +8,7 @@ Reference files:
 - `/Volumes/Samsung990P/gscale/gscale-platform/scale/serial_reader.go`
 - `/Volumes/Samsung990P/gscale/gscale-platform/scale/detect.go`
 - `/Volumes/Samsung990P/gscale/gscale-platform/scale/types.go`
+- `/Volumes/Samsung990P/gscale/gscale-platform/polygon/main.go`
 
 ## Architecture Boundary
 
@@ -49,6 +50,25 @@ Every scale driver should produce a typed reading containing:
 - Error/status when no valid weight can be produced.
 
 The serial driver may preserve production raw-frame behavior for compatibility.
+
+## Polygon Simulator Contract
+
+`gscale-platform/polygon` is the production development simulator.
+
+Useful endpoint:
+
+- `GET /api/v1/scale`
+- `POST /api/v1/dev/weight`
+
+Observed raw scale frames:
+
+- Stable weight: `1.250 kg ST`
+- Unstable weight: `2.750 kg US`
+- Stable zero: `0.000 kg ST`
+
+Polygon returns `port="polygon://scale"`.
+
+These frames must parse through the same scale stream decoder contract.
 
 ## Parser Contract
 

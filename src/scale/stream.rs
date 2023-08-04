@@ -135,4 +135,23 @@ mod tests {
         assert_eq!(caps.default_unit, "kg");
         assert!(caps.realtime_weight);
     }
+
+    #[test]
+    fn decodes_polygon_simulator_raw_frames() {
+        let mut decoder = SerialStreamDecoder::new("polygon://scale", 0, "kg");
+        let readings = decoder.push_chunk("1.250 kg ST\n2.750 kg US\n0.000 kg ST\n");
+
+        assert_eq!(readings.len(), 3);
+        assert_eq!(readings[0].source, "serial");
+        assert_eq!(readings[0].port, "polygon://scale");
+        assert_eq!(readings[0].weight, Some(1.25));
+        assert_eq!(readings[0].stable, Some(true));
+        assert_eq!(readings[0].raw, "1.250 kg ST");
+        assert_eq!(readings[1].weight, Some(2.75));
+        assert_eq!(readings[1].stable, Some(false));
+        assert_eq!(readings[1].raw, "2.750 kg US");
+        assert_eq!(readings[2].weight, Some(0.0));
+        assert_eq!(readings[2].stable, Some(true));
+        assert_eq!(readings[2].raw, "0.000 kg ST");
+    }
 }
