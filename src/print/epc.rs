@@ -63,7 +63,7 @@ pub fn format_epc_24(ns: i64, seq: u32, salt: u32) -> String {
 
 fn new_epc_salt() -> u32 {
     read_os_random_u32().unwrap_or_else(|| {
-        let fallback = now_unix_ns() as u32 ^ ((process::id() as u32) << 16);
+        let fallback = now_unix_ns() as u32 ^ (process::id() << 16);
         fallback | 1
     }) | 1
 }

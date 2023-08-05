@@ -3,7 +3,7 @@ pub fn normalize_epc(epc: &str) -> Result<String, String> {
     if let Some(stripped) = value.strip_prefix("0X") {
         value = stripped.to_string();
     }
-    value = value.replace(' ', "").replace('-', "");
+    value = value.replace([' ', '-'], "");
 
     if value.is_empty() {
         return Err("epc bo'sh".to_string());
@@ -11,10 +11,10 @@ pub fn normalize_epc(epc: &str) -> Result<String, String> {
     if !value.chars().all(|ch| ch.is_ascii_hexdigit()) {
         return Err("epc faqat hex bo'lishi kerak".to_string());
     }
-    if value.len() % 2 != 0 {
+    if !value.len().is_multiple_of(2) {
         return Err("epc uzunligi juft bo'lishi kerak".to_string());
     }
-    if value.len() % 4 != 0 {
+    if !value.len().is_multiple_of(4) {
         return Err("epc uzunligi 16-bit word (4 hex belgi) ga bo'linishi kerak".to_string());
     }
     if value.len() < 8 || value.len() > 64 {

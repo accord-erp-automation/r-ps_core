@@ -1,9 +1,6 @@
 pub fn sanitize_zpl_text(value: &str) -> String {
     value
-        .replace('\n', " ")
-        .replace('\r', " ")
-        .replace('^', " ")
-        .replace('~', " ")
+        .replace(['\n', '\r', '^', '~'], " ")
         .trim()
         .to_string()
 }
