@@ -96,10 +96,17 @@ The shared output from every scale driver should be a typed reading:
 Core should consume this typed stream and handle:
 
 - Stable/live decision.
-- Print trigger decision.
+- Stable/live state for later trigger policy.
 - Batch state transition.
 - API snapshot generation.
 - Mobile/monitor state updates.
+
+Manufacturing policy rule:
+
+- Do not require zero-crossing as a global core rule.
+- Do not require weight to drop below the previous quantity as a global core rule.
+- These are optional workflow policies only.
+- Core must expose state; workflow policy decides how to use it.
 
 Hardware/protocol modules should handle:
 

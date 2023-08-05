@@ -27,11 +27,20 @@ Core layer owns:
 
 - Receiving normalized realtime readings.
 - Stable/live decision.
-- Print trigger decision.
+- Exposing stable/live state for print trigger policy.
 - Batch state transition.
 - API and bridge snapshots.
 
 Core must not depend on a specific hardware transport.
+
+Core must not impose manufacturing-specific reset rules globally.
+
+Forbidden global rules:
+
+- Require weight to return to zero before accepting the next stable reading.
+- Require weight to drop below the previous quantity before accepting the next stable reading.
+
+Those rules are manufacturing-specific policies and must be optional configuration only.
 
 The current production-compatible driver is serial scale.
 
@@ -50,6 +59,32 @@ Every scale driver should produce a typed reading containing:
 - Error/status when no valid weight can be produced.
 
 The serial driver may preserve production raw-frame behavior for compatibility.
+
+## Stable State Contract
+
+Stable state tracking is observation, not automatic production trigger.
+
+The tracker may report:
+
+- No valid weight.
+- Moving.
+- Stable but still inside hold duration.
+- Ready stable reading.
+- Error state.
+
+The tracker must not decide manufacturing workflow by itself.
+
+Trigger policy must be separate and configurable.
+
+Default core behavior:
+
+- No zero-crossing requirement.
+- No previous-quantity drop requirement.
+- Device `stable=false` resets stable hold.
+- Missing weight resets stable hold.
+- Weight changes outside tolerance reset stable hold.
+- Weight changes inside tolerance keep the current stable hold.
+- A ready stable reading means "safe current observation", not "must print".
 
 ## Polygon Simulator Contract
 
