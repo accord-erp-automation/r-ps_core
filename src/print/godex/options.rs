@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn normalizes_pack_options_like_gscale() {
-        let options = LabelOptions::default().normalized_pack();
+        let options = LabelOptions::default_pack().normalized_pack();
 
         assert_eq!(options.label_length_mm, 50);
         assert_eq!(options.label_gap_mm, 3);
