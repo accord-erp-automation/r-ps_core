@@ -7,10 +7,14 @@ pub struct MonoBitmap {
 
 impl MonoBitmap {
     pub fn new(width: usize, height: usize) -> Self {
+        Self::filled(width, height, false)
+    }
+
+    pub fn filled(width: usize, height: usize, light: bool) -> Self {
         Self {
             width,
             height,
-            light_pixels: vec![false; width.saturating_mul(height)],
+            light_pixels: vec![light; width.saturating_mul(height)],
         }
     }
 
@@ -27,6 +31,37 @@ impl MonoBitmap {
             return;
         }
         self.light_pixels[y * self.width + x] = light;
+    }
+
+    pub fn crop_ink(&self) -> Self {
+        let mut min_x = self.width;
+        let mut min_y = self.height;
+        let mut max_x = 0;
+        let mut max_y = 0;
+        let mut found = false;
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if !self.is_light(x, y) {
+                    min_x = min_x.min(x);
+                    min_y = min_y.min(y);
+                    max_x = max_x.max(x + 1);
+                    max_y = max_y.max(y + 1);
+                    found = true;
+                }
+            }
+        }
+        if !found {
+            return self.clone();
+        }
+        min_x = min_x.saturating_sub(1);
+        max_x = (max_x + 1).min(self.width);
+        let mut out = Self::filled(max_x - min_x, max_y - min_y, true);
+        for y in min_y..max_y {
+            for x in min_x..max_x {
+                out.set_light(x - min_x, y - min_y, self.is_light(x, y));
+            }
+        }
+        out
     }
 
     fn is_light(&self, x: usize, y: usize) -> bool {

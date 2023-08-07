@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 libc = "0.2.186"
+qrcodegen = "1.8"
 regex = "1.11"
 serialport = "4.9.0"
 unicode-normalization = "0.1"

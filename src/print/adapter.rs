@@ -41,10 +41,9 @@ pub fn build_print_command(job: CorePrintJob) -> Result<PrintCommand, PrintAdapt
 fn build_godex_command(job: CorePrintJob) -> Result<PrintCommand, PrintAdapterError> {
     let content =
         build_pack_label_content(&job, "Accord", "5kg").map_err(PrintAdapterError::BuildCommand)?;
-    Ok(PrintCommand::GodexPack(build_pack_render(
-        &content,
-        LabelOptions::default_pack(),
-    )))
+    let render = build_pack_render(&content, LabelOptions::default_pack())
+        .map_err(PrintAdapterError::BuildCommand)?;
+    Ok(PrintCommand::GodexPack(render))
 }
 
 fn build_zebra_command(job: CorePrintJob) -> Result<PrintCommand, PrintAdapterError> {

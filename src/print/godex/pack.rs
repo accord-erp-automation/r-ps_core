@@ -1,6 +1,8 @@
 use crate::core::PackLabelContent;
 
 use super::options::{LabelOptions, mm_dots};
+use super::qr::render_qr_graphic;
+use super::text_graphic::render_pack_text_graphic;
 
 const TEXT_GRAPHIC_NAME: &str = "TEXTLBL";
 const QR_GRAPHIC_NAME: &str = "QRLBL";
@@ -9,14 +11,21 @@ const QR_GRAPHIC_NAME: &str = "QRLBL";
 pub struct GodexPackRender {
     pub commands: Vec<String>,
     pub qr_payload: String,
+    pub text_graphic_bmp: Vec<u8>,
+    pub qr_graphic_bmp: Vec<u8>,
     pub text_graphic_name: String,
     pub qr_graphic_name: String,
     pub qr_box_dots: i32,
 }
 
-pub fn build_pack_render(content: &PackLabelContent, options: LabelOptions) -> GodexPackRender {
+pub fn build_pack_render(
+    content: &PackLabelContent,
+    options: LabelOptions,
+) -> Result<GodexPackRender, String> {
     let options = options.normalized_pack();
     let layout = compute_pack_layout(&options);
+    let text_graphic_bmp = render_pack_text_graphic(content, &options);
+    let qr_graphic_bmp = render_qr_graphic(&content.qr_payload, layout.qr_box_dots)?;
 
     let commands = vec![
         "~S,ESG".to_string(),
@@ -39,13 +48,15 @@ pub fn build_pack_render(content: &PackLabelContent, options: LabelOptions) -> G
         "E".to_string(),
     ];
 
-    GodexPackRender {
+    Ok(GodexPackRender {
         commands,
         qr_payload: content.qr_payload.clone(),
+        text_graphic_bmp,
+        qr_graphic_bmp,
         text_graphic_name: TEXT_GRAPHIC_NAME.to_string(),
         qr_graphic_name: QR_GRAPHIC_NAME.to_string(),
         qr_box_dots: layout.qr_box_dots,
-    }
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -115,7 +126,7 @@ mod tests {
 
     #[test]
     fn builds_pack_commands_like_gscale_godex_layout() {
-        let render = build_pack_render(&content(), LabelOptions::default_pack());
+        let render = build_pack_render(&content(), LabelOptions::default_pack()).unwrap();
 
         assert_eq!(
             render.commands,
@@ -142,6 +153,8 @@ mod tests {
             "https://scan.wspace.sbs/L/ACCORD+LLC/GREEN+TEA/1.3/5/3034257BF7194E406994036B"
         );
         assert_eq!(render.qr_box_dots, 144);
+        assert_eq!(&render.text_graphic_bmp[0..2], b"BM");
+        assert_eq!(&render.qr_graphic_bmp[0..2], b"BM");
     }
 
     #[test]
@@ -154,7 +167,7 @@ mod tests {
             safe_margin_mm: 5.0,
             qr_box_mm: 16.0,
         };
-        let render = build_pack_render(&content(), options);
+        let render = build_pack_render(&content(), options).unwrap();
 
         assert_eq!(render.commands[6], "^Q40,2");
         assert_eq!(render.commands[7], "^W60");
