@@ -1,3 +1,4 @@
+pub mod bmp;
 pub mod ezpl;
 pub mod options;
 pub mod pack;
@@ -5,6 +6,7 @@ pub mod payload;
 pub mod text;
 pub mod wrap;
 
+pub use bmp::{MonoBitmap, encode_mono_bmp};
 pub use ezpl::build_direct_pack_label;
 pub use options::LabelOptions;
 pub use pack::{GodexPackRender, build_pack_render};
