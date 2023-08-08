@@ -1,8 +1,7 @@
 use std::fmt;
 
-use crate::core::{CorePrintJob, build_pack_label_content};
+use crate::core::{CorePrintJob, CorePrintPlan, build_pack_label_content};
 
-use super::capabilities::capabilities_for;
 use super::godex::{GodexPackRender, LabelOptions, build_pack_render};
 use super::mode::PrintMode;
 use super::printer::PrinterKind;
@@ -20,35 +19,22 @@ pub enum PrintCommand {
 #[derive(Clone, Debug, PartialEq)]
 pub enum PrintAdapterError {
     BuildCommand(String),
-    UnsupportedMode {
-        printer: PrinterKind,
-        mode: PrintMode,
-    },
 }
 
 impl fmt::Display for PrintAdapterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BuildCommand(error) => write!(f, "{error}"),
-            Self::UnsupportedMode { printer, mode } => {
-                write!(f, "{} does not support {}", printer.as_str(), mode.as_str())
-            }
         }
     }
 }
 
 impl std::error::Error for PrintAdapterError {}
 
-pub fn build_print_command(job: CorePrintJob) -> Result<PrintCommand, PrintAdapterError> {
-    let printer = job.printer.unwrap_or(PrinterKind::Zebra);
-    let mode = job.mode;
-    if !capabilities_for(printer).supports_mode(mode) {
-        return Err(PrintAdapterError::UnsupportedMode { printer, mode });
-    }
-
-    match printer {
-        PrinterKind::Zebra => build_zebra_command(job),
-        PrinterKind::Godex => build_godex_command(job),
+pub fn build_print_command(plan: CorePrintPlan) -> Result<PrintCommand, PrintAdapterError> {
+    match plan.printer {
+        PrinterKind::Zebra => build_zebra_command(plan.job),
+        PrinterKind::Godex => build_godex_command(plan.job),
     }
 }
 
@@ -94,10 +80,10 @@ fn build_zebra_command(job: CorePrintJob) -> Result<PrintCommand, PrintAdapterEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{PrintSelection, QuantitySource};
+    use crate::core::{PrintSelection, QuantitySource, validate_core_print_job};
 
-    fn job(mode: PrintMode, printer: Option<PrinterKind>) -> CorePrintJob {
-        CorePrintJob::from_selection(
+    fn plan(mode: PrintMode, printer: Option<PrinterKind>) -> CorePrintPlan {
+        let job = CorePrintJob::from_selection(
             "3034257BF7194E406994036B",
             1.72,
             2.5,
@@ -113,7 +99,8 @@ mod tests {
                 tare_enabled: true,
                 tare_kg: 0.78,
             },
-        )
+        );
+        validate_core_print_job(job).unwrap()
     }
 
     fn unwrap_zebra(command: PrintCommand) -> String {
@@ -124,9 +111,9 @@ mod tests {
     }
 
     #[test]
-    fn builds_zebra_rfid_command_from_core_job() {
+    fn builds_zebra_rfid_command_from_core_plan() {
         let command = unwrap_zebra(
-            build_print_command(job(PrintMode::Rfid, Some(PrinterKind::Zebra))).unwrap(),
+            build_print_command(plan(PrintMode::Rfid, Some(PrinterKind::Zebra))).unwrap(),
         );
 
         assert!(command.contains("^RS8,,,1,N"));
@@ -137,9 +124,9 @@ mod tests {
     }
 
     #[test]
-    fn builds_zebra_label_only_command_from_core_job() {
+    fn builds_zebra_label_only_command_from_core_plan() {
         let command = unwrap_zebra(
-            build_print_command(job(PrintMode::LabelOnly, Some(PrinterKind::Zebra))).unwrap(),
+            build_print_command(plan(PrintMode::LabelOnly, Some(PrinterKind::Zebra))).unwrap(),
         );
 
         assert!(command.contains("^MMT"));
@@ -151,15 +138,15 @@ mod tests {
 
     #[test]
     fn defaults_missing_printer_to_zebra_like_gscale_backend() {
-        let command = unwrap_zebra(build_print_command(job(PrintMode::Rfid, None)).unwrap());
+        let command = unwrap_zebra(build_print_command(plan(PrintMode::Rfid, None)).unwrap());
 
         assert!(command.contains("^RFW,H,,,A^FD3034257BF7194E406994036B^FS"));
     }
 
     #[test]
-    fn builds_godex_pack_render_from_core_job() {
+    fn builds_godex_pack_render_from_core_plan() {
         let PrintCommand::GodexPack(render) =
-            build_print_command(job(PrintMode::LabelOnly, Some(PrinterKind::Godex))).unwrap()
+            build_print_command(plan(PrintMode::LabelOnly, Some(PrinterKind::Godex))).unwrap()
         else {
             panic!("expected godex pack render");
         };
@@ -175,19 +162,5 @@ mod tests {
             "https://scan.wspace.sbs/L/ACCORD/GREEN+TEA/1.7/2.5/3034257BF7194E406994036B"
         );
         assert_eq!(render.qr_box_dots, 144);
-    }
-
-    #[test]
-    fn rejects_godex_rfid_mode_by_capability() {
-        let err = build_print_command(job(PrintMode::Rfid, Some(PrinterKind::Godex))).unwrap_err();
-
-        assert_eq!(
-            err,
-            PrintAdapterError::UnsupportedMode {
-                printer: PrinterKind::Godex,
-                mode: PrintMode::Rfid,
-            }
-        );
-        assert_eq!(err.to_string(), "godex does not support rfid");
     }
 }
