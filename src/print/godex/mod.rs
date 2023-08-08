@@ -1,4 +1,5 @@
 pub mod bmp;
+pub mod executor;
 pub mod ezpl;
 pub mod options;
 pub mod pack;
@@ -9,6 +10,7 @@ pub mod text_graphic;
 pub mod wrap;
 
 pub use bmp::{MonoBitmap, encode_mono_bmp};
+pub use executor::{GodexExecutionError, GodexTransport, execute_pack_render};
 pub use ezpl::build_direct_pack_label;
 pub use options::LabelOptions;
 pub use pack::{GodexPackRender, build_pack_render};

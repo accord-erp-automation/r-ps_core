@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::core::{CorePrintJob, build_pack_label_content};
 
+use super::capabilities::capabilities_for;
 use super::godex::{GodexPackRender, LabelOptions, build_pack_render};
 use super::mode::PrintMode;
 use super::printer::PrinterKind;
@@ -19,12 +20,19 @@ pub enum PrintCommand {
 #[derive(Clone, Debug, PartialEq)]
 pub enum PrintAdapterError {
     BuildCommand(String),
+    UnsupportedMode {
+        printer: PrinterKind,
+        mode: PrintMode,
+    },
 }
 
 impl fmt::Display for PrintAdapterError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::BuildCommand(error) => write!(f, "{error}"),
+            Self::UnsupportedMode { printer, mode } => {
+                write!(f, "{} does not support {}", printer.as_str(), mode.as_str())
+            }
         }
     }
 }
@@ -32,7 +40,13 @@ impl fmt::Display for PrintAdapterError {
 impl std::error::Error for PrintAdapterError {}
 
 pub fn build_print_command(job: CorePrintJob) -> Result<PrintCommand, PrintAdapterError> {
-    match job.printer.unwrap_or(PrinterKind::Zebra) {
+    let printer = job.printer.unwrap_or(PrinterKind::Zebra);
+    let mode = job.mode;
+    if !capabilities_for(printer).supports_mode(mode) {
+        return Err(PrintAdapterError::UnsupportedMode { printer, mode });
+    }
+
+    match printer {
         PrinterKind::Zebra => build_zebra_command(job),
         PrinterKind::Godex => build_godex_command(job),
     }
@@ -161,5 +175,19 @@ mod tests {
             "https://scan.wspace.sbs/L/ACCORD/GREEN+TEA/1.7/2.5/3034257BF7194E406994036B"
         );
         assert_eq!(render.qr_box_dots, 144);
+    }
+
+    #[test]
+    fn rejects_godex_rfid_mode_by_capability() {
+        let err = build_print_command(job(PrintMode::Rfid, Some(PrinterKind::Godex))).unwrap_err();
+
+        assert_eq!(
+            err,
+            PrintAdapterError::UnsupportedMode {
+                printer: PrinterKind::Godex,
+                mode: PrintMode::Rfid,
+            }
+        );
+        assert_eq!(err.to_string(), "godex does not support rfid");
     }
 }

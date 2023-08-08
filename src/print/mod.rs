@@ -1,4 +1,5 @@
 pub mod adapter;
+pub mod capabilities;
 pub mod epc;
 pub mod godex;
 pub mod mode;
