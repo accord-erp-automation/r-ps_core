@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::core::{CorePrintPlan, CorePrintPlanError, PrintSelection, plan_core_print};
 use crate::print::adapter::{PrintAdapterError, PrintCommand, build_print_command};
+use crate::print::executor::{PrintExecutionError, PrintExecutionResult, PrinterExecutor};
 use crate::scale::Reading;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -14,6 +15,7 @@ pub struct PrintPipelineResult {
 pub enum PrintPipelineError {
     Core(CorePrintPlanError),
     Adapter(PrintAdapterError),
+    Execution(PrintExecutionError),
 }
 
 impl fmt::Display for PrintPipelineError {
@@ -21,6 +23,7 @@ impl fmt::Display for PrintPipelineError {
         match self {
             Self::Core(error) => write!(f, "{error}"),
             Self::Adapter(error) => write!(f, "{error}"),
+            Self::Execution(error) => write!(f, "{error}"),
         }
     }
 }
@@ -38,11 +41,24 @@ pub fn prepare_print_command(
     Ok(PrintPipelineResult { plan, command })
 }
 
+pub fn execute_prepared_print<E: PrinterExecutor>(
+    executor: &mut E,
+    prepared: &PrintPipelineResult,
+) -> Result<PrintExecutionResult, PrintPipelineError> {
+    executor
+        .execute(&prepared.command)
+        .map_err(PrintPipelineError::Execution)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::QuantitySource;
     use crate::print::adapter::PrintCommand;
+    use crate::print::executor::{
+        GodexExecutor, PrintExecutionError, ZebraExecutor, ZebraTransport,
+    };
+    use crate::print::godex::{GodexExecutionError, GodexTransport};
     use crate::print::mode::PrintMode;
     use crate::print::printer::PrinterKind;
     use crate::scale::Reading;
@@ -126,6 +142,83 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "zebra print job missing required fields: epc"
+        );
+    }
+
+    #[derive(Default)]
+    struct MockZebraTransport {
+        sent: Vec<String>,
+    }
+
+    impl ZebraTransport for MockZebraTransport {
+        fn send_zpl(&mut self, zpl: &str) -> Result<String, PrintExecutionError> {
+            self.sent.push(zpl.to_string());
+            Ok("OK".to_string())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockGodexTransport {
+        calls: Vec<String>,
+    }
+
+    impl GodexTransport for MockGodexTransport {
+        fn send(
+            &mut self,
+            command: &str,
+            read: bool,
+            _pause: std::time::Duration,
+        ) -> Result<String, GodexExecutionError> {
+            self.calls.push(format!("send:{command}:read={read}"));
+            if command == "~S,STATUS" {
+                return Ok("00,OK".to_string());
+            }
+            Ok(String::new())
+        }
+
+        fn write_raw(&mut self, payload: &[u8]) -> Result<(), GodexExecutionError> {
+            self.calls.push(format!("raw:{}", payload.len()));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn executes_prepared_zebra_print_without_replanning() {
+        let prepared = prepare_print_command(
+            &reading(2.5),
+            selection("zebra", PrintMode::Rfid),
+            "3034257BF7194E406994036B",
+        )
+        .unwrap();
+        let mut executor = ZebraExecutor::new(MockZebraTransport::default());
+
+        let result = execute_prepared_print(&mut executor, &prepared).unwrap();
+
+        assert_eq!(result.printer, PrinterKind::Zebra);
+        assert_eq!(result.status, "OK");
+        assert!(executor.transport_mut().sent[0].contains("^RFW,H,,,A^FD"));
+    }
+
+    #[test]
+    fn executes_prepared_godex_print_without_replanning() {
+        let prepared = prepare_print_command(
+            &reading(2.5),
+            selection("godex", PrintMode::LabelOnly),
+            "3034257BF7194E406994036B",
+        )
+        .unwrap();
+        let mut executor = GodexExecutor::new(MockGodexTransport::default());
+
+        let result = execute_prepared_print(&mut executor, &prepared).unwrap();
+
+        assert_eq!(result.printer, PrinterKind::Godex);
+        assert_eq!(result.status, "00,OK");
+        assert!(
+            executor
+                .transport_mut()
+                .calls
+                .iter()
+                .any(|call| call == "send:~S,STATUS:read=true")
         );
     }
 }
