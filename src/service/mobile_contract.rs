@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use super::config::{DEFAULT_DISCOVERY_PORT, DEFAULT_MOBILE_API_PORTS, default_mobile_api_port};
+use crate::print::capabilities::ActivePrinterManifest;
 
 pub const APP_ID: &str = "gscale-zebra";
 pub const SERVICE_ID: &str = "mobileapi";
@@ -24,7 +25,7 @@ impl ServiceIdentity {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct HealthResponse {
     pub ok: bool,
     pub service: &'static str,
@@ -39,7 +40,7 @@ impl HealthResponse {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct HandshakeResponse {
     pub ok: bool,
     pub service: &'static str,
@@ -82,7 +83,7 @@ impl HandshakeResponse {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct DiscoveryAnnouncement {
     #[serde(rename = "type")]
     pub announcement_type: &'static str,
@@ -114,6 +115,51 @@ impl DiscoveryAnnouncement {
 
     pub fn to_json_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct PrinterCapabilityFlagsResponse {
+    pub thermal_label: bool,
+    pub rfid_epc_write: bool,
+    pub barcode: bool,
+    pub qr: bool,
+    pub verify_after_print: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ActivePrinterResponse {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub capabilities: PrinterCapabilityFlagsResponse,
+    pub required_fields: Vec<&'static str>,
+    pub unsupported_modes: Vec<&'static str>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct PrinterCapabilitiesResponse {
+    pub ok: bool,
+    pub active_printer: ActivePrinterResponse,
+}
+
+impl PrinterCapabilitiesResponse {
+    pub fn from_manifest(manifest: ActivePrinterManifest) -> Self {
+        Self {
+            ok: true,
+            active_printer: ActivePrinterResponse {
+                id: manifest.id,
+                name: manifest.name,
+                capabilities: PrinterCapabilityFlagsResponse {
+                    thermal_label: manifest.capabilities.thermal_label,
+                    rfid_epc_write: manifest.capabilities.rfid_epc_write,
+                    barcode: manifest.capabilities.barcode,
+                    qr: manifest.capabilities.qr,
+                    verify_after_print: manifest.capabilities.verify_after_print,
+                },
+                required_fields: manifest.required_fields.to_vec(),
+                unsupported_modes: manifest.unsupported_modes.to_vec(),
+            },
+        }
     }
 }
 
@@ -179,5 +225,19 @@ mod tests {
     #[test]
     fn health_response_matches_mobile_fallback_probe() {
         assert_eq!(HealthResponse::ok().service, "mobileapi");
+    }
+
+    #[test]
+    fn printer_capability_response_keeps_godex_rfid_disabled() {
+        use crate::print::capabilities::manifest_for;
+        use crate::print::printer::PrinterKind;
+
+        let response = PrinterCapabilitiesResponse::from_manifest(manifest_for(PrinterKind::Godex));
+        let json = serde_json::to_string(&response).unwrap();
+
+        assert!(json.contains(r#""id":"godex""#));
+        assert!(json.contains(r#""rfid_epc_write":false"#));
+        assert!(json.contains(r#""qr":true"#));
+        assert!(json.contains(r#""unsupported_modes":["rfid_epc_write"]"#));
     }
 }
