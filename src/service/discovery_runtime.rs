@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use super::config::MobileServiceConfig;
 use super::discovery::{
-    DISCOVERY_ANNOUNCE_INTERVAL_MS, DiscoverySocketConfig, bind_discovery_socket,
-    discovery_response_for_packet, send_discovery_announcement,
+    DISCOVERY_ANNOUNCE_INTERVAL_MS, DiscoverySocketConfig, bind_announcement_socket,
+    bind_discovery_socket, discovery_response_for_packet, send_discovery_announcement,
 };
 use super::mobile_contract::ServiceIdentity;
 
@@ -31,11 +31,13 @@ pub fn serve_discovery(
     state: DiscoveryRuntimeState,
 ) -> io::Result<()> {
     let socket = bind_discovery_socket(&config)?;
-    serve_discovery_socket(&socket, &config, &state)
+    let announce_socket = bind_announcement_socket()?;
+    serve_discovery_socket(&socket, &announce_socket, &config, &state)
 }
 
 pub fn serve_discovery_socket(
     socket: &UdpSocket,
+    announce_socket: &UdpSocket,
     config: &DiscoverySocketConfig,
     state: &DiscoveryRuntimeState,
 ) -> io::Result<()> {
@@ -47,7 +49,7 @@ pub fn serve_discovery_socket(
     loop {
         if last_announce.elapsed() >= Duration::from_millis(DISCOVERY_ANNOUNCE_INTERVAL_MS) {
             let _ = send_discovery_announcement(
-                socket,
+                announce_socket,
                 config,
                 &state.identity,
                 state.http_port,

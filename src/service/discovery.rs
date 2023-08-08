@@ -83,6 +83,12 @@ pub fn bind_discovery_socket(config: &DiscoverySocketConfig) -> io::Result<UdpSo
     Ok(socket)
 }
 
+pub fn bind_announcement_socket() -> io::Result<UdpSocket> {
+    let socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))?;
+    socket.set_broadcast(true)?;
+    Ok(socket)
+}
+
 pub fn send_discovery_announcement(
     socket: &UdpSocket,
     config: &DiscoverySocketConfig,
@@ -314,5 +320,13 @@ mod tests {
                 .announce_targets
                 .contains(&SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 255), 18081))
         );
+    }
+
+    #[test]
+    fn announcement_socket_uses_ephemeral_port_like_gscale() {
+        let socket = bind_announcement_socket().unwrap();
+        let local = socket.local_addr().unwrap();
+
+        assert_ne!(local.port(), DEFAULT_DISCOVERY_PORT);
     }
 }

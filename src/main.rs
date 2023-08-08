@@ -6,8 +6,9 @@ use std::thread;
 use rp_scale::print::PrinterKind;
 use rp_scale::service::{
     DiscoveryRuntimeState, DiscoverySocketConfig, MobileHttpState, MobileServiceConfig,
-    ServiceIdentity, bind_mobile_http_listener, collect_discovery_broadcast_targets,
-    serve_discovery, serve_mobile_http,
+    ServiceIdentity, bind_mobile_http_listener, bonjour_config,
+    collect_discovery_broadcast_targets, register_bonjour_service, serve_discovery,
+    serve_mobile_http,
 };
 
 fn main() {
@@ -33,7 +34,18 @@ fn serve() -> std::io::Result<()> {
     );
     let identity = ServiceIdentity::new(&config.server_name, "rp-scale", "RP Scale", "operator");
     let http_state = MobileHttpState::from_config(&config, identity.clone(), active_printer);
-    let discovery_state = DiscoveryRuntimeState::from_config(&config, identity);
+    let discovery_state = DiscoveryRuntimeState::from_config(&config, identity.clone());
+    let _bonjour = match register_bonjour_service(&bonjour_config(
+        &identity,
+        &config.server_name,
+        config.http_port(),
+    )) {
+        Ok(service) => Some(service),
+        Err(err) => {
+            eprintln!("rp-scale bonjour warning: {err}");
+            None
+        }
+    };
 
     let discovery_targets = collect_discovery_broadcast_targets(0);
     let discovery_config =
