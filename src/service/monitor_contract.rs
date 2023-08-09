@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use super::mobile_contract::ServiceIdentity;
 use crate::print::printer::PrinterKind;
+use crate::scale::Reading;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct MonitorResponse {
@@ -17,7 +18,21 @@ impl MonitorResponse {
         Self {
             ok: true,
             profile: MonitorProfile::from_identity(identity),
-            state: MonitorState::driver_idle(printer.clone()),
+            state: MonitorState::driver_idle(printer.clone(), active_printer),
+            printer,
+        }
+    }
+
+    pub fn driver_with_scale(
+        identity: &ServiceIdentity,
+        active_printer: PrinterKind,
+        reading: &Reading,
+    ) -> Self {
+        let printer = MonitorPrinter::disconnected(active_printer);
+        Self {
+            ok: true,
+            profile: MonitorProfile::from_identity(identity),
+            state: MonitorState::driver_with_scale(printer.clone(), active_printer, reading),
             printer,
         }
     }
@@ -59,12 +74,28 @@ pub struct MonitorState {
 }
 
 impl MonitorState {
-    fn driver_idle(printer: MonitorPrinter) -> Self {
+    fn driver_idle(printer: MonitorPrinter, active_printer: PrinterKind) -> Self {
         Self {
             scale: ScaleSnapshot::disconnected(),
             zebra: ZebraSnapshot::disconnected(),
             printer,
-            batch: BatchSnapshot::inactive(),
+            batch: BatchSnapshot::inactive(active_printer),
+            print_request: PrintRequestSnapshot::idle(),
+            archive_print: ArchivePrintSnapshot::idle(),
+            updated_at: String::new(),
+        }
+    }
+
+    fn driver_with_scale(
+        printer: MonitorPrinter,
+        active_printer: PrinterKind,
+        reading: &Reading,
+    ) -> Self {
+        Self {
+            scale: ScaleSnapshot::from_reading(reading),
+            zebra: ZebraSnapshot::disconnected(),
+            printer,
+            batch: BatchSnapshot::inactive(active_printer),
             print_request: PrintRequestSnapshot::idle(),
             archive_print: ArchivePrintSnapshot::idle(),
             updated_at: String::new(),
@@ -92,6 +123,18 @@ impl ScaleSnapshot {
             unit: "kg".to_string(),
             stable: None,
             error: String::new(),
+            updated_at: String::new(),
+        }
+    }
+
+    fn from_reading(reading: &Reading) -> Self {
+        Self {
+            source: reading.source.clone(),
+            port: reading.port.clone(),
+            weight: reading.weight,
+            unit: normalize_unit(&reading.unit),
+            stable: reading.stable,
+            error: reading.error.clone(),
             updated_at: String::new(),
         }
     }
@@ -175,15 +218,22 @@ pub struct BatchSnapshot {
 }
 
 impl BatchSnapshot {
-    fn inactive() -> Self {
+    fn inactive(active_printer: PrinterKind) -> Self {
+        let printer = active_printer.as_str().to_string();
+        let print_mode = if active_printer == PrinterKind::Godex {
+            "label"
+        } else {
+            "rfid"
+        };
+
         Self {
             active: false,
             chat_id: 0,
             item_code: String::new(),
             item_name: String::new(),
             warehouse: String::new(),
-            print_mode: "rfid".to_string(),
-            printer: "zebra".to_string(),
+            print_mode: print_mode.to_string(),
+            printer,
             quantity_source: "scale".to_string(),
             manual_qty_kg: 0.0,
             tare: false,
@@ -191,6 +241,15 @@ impl BatchSnapshot {
             total_qty: 0.0,
             updated_at: String::new(),
         }
+    }
+}
+
+fn normalize_unit(unit: &str) -> String {
+    let unit = unit.trim().to_ascii_lowercase();
+    if unit.is_empty() {
+        "kg".to_string()
+    } else {
+        unit
     }
 }
 
@@ -303,6 +362,30 @@ mod tests {
         assert_eq!(body["state"]["printer"]["kind"], "godex");
         assert_eq!(body["state"]["printer"]["label"], "ulanmagan");
         assert_eq!(body["state"]["batch"]["active"], false);
+        assert_eq!(body["state"]["batch"]["printer"], "godex");
+        assert_eq!(body["state"]["batch"]["print_mode"], "label");
         assert_eq!(body["state"]["print_request"]["status"], "idle");
+    }
+
+    #[test]
+    fn exposes_realtime_scale_reading() {
+        let identity = ServiceIdentity::new("rp-scale", "rps_1", "RP Scale", "operator");
+        let reading = Reading::serial("/dev/ttys001", 9600, "KG").with_weight(
+            2.75,
+            Some(false),
+            "2.750 KG US",
+        );
+        let body = serde_json::to_value(MonitorResponse::driver_with_scale(
+            &identity,
+            PrinterKind::Zebra,
+            &reading,
+        ))
+        .unwrap();
+
+        assert_eq!(body["state"]["scale"]["source"], "serial");
+        assert_eq!(body["state"]["scale"]["port"], "/dev/ttys001");
+        assert_eq!(body["state"]["scale"]["weight"], 2.75);
+        assert_eq!(body["state"]["scale"]["unit"], "kg");
+        assert_eq!(body["state"]["scale"]["stable"], false);
     }
 }

@@ -4,16 +4,17 @@ use super::config::MobileServiceConfig;
 use super::mobile_contract::{
     HandshakeResponse, HealthResponse, PrinterCapabilitiesResponse, ServiceIdentity,
 };
-use super::monitor_contract::MonitorResponse;
+use super::monitor_runtime::MonitorRuntimeState;
 use crate::print::capabilities::manifest_for;
 use crate::print::printer::PrinterKind;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct MobileHttpState {
     pub identity: ServiceIdentity,
     pub http_port: u16,
     pub candidate_ports: Vec<u16>,
     pub active_printer: PrinterKind,
+    pub monitor: MonitorRuntimeState,
 }
 
 impl MobileHttpState {
@@ -22,12 +23,14 @@ impl MobileHttpState {
         http_port: u16,
         candidate_ports: Vec<u16>,
         active_printer: PrinterKind,
+        monitor: MonitorRuntimeState,
     ) -> Self {
         Self {
             identity,
             http_port,
             candidate_ports,
             active_printer,
+            monitor,
         }
     }
 
@@ -35,12 +38,14 @@ impl MobileHttpState {
         config: &MobileServiceConfig,
         identity: ServiceIdentity,
         active_printer: PrinterKind,
+        monitor: MonitorRuntimeState,
     ) -> Self {
         Self::new(
             identity,
             config.http_port(),
             config.candidate_ports.clone(),
             active_printer,
+            monitor,
         )
     }
 }
@@ -106,7 +111,9 @@ pub fn handle_mobile_http_request(
             MobileHttpResponse::json(200, &response)
         }
         ("GET", "/v1/mobile/monitor/state") => {
-            let response = MonitorResponse::driver_idle(&state.identity, state.active_printer);
+            let response = state
+                .monitor
+                .snapshot(&state.identity, state.active_printer);
             MobileHttpResponse::json(200, &response)
         }
         (_, "/healthz")
@@ -143,6 +150,7 @@ mod tests {
             39117,
             vec![39117, 41257],
             printer,
+            MonitorRuntimeState::default(),
         )
     }
 

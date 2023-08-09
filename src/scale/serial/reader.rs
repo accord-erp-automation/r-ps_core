@@ -76,6 +76,53 @@ impl SerialReader {
         out
     }
 
+    pub fn run_forever<F>(&self, mut on_reading: F)
+    where
+        F: FnMut(Reading),
+    {
+        loop {
+            let mut source = match open_read_source(&self.config) {
+                Ok(source) => source,
+                Err(err) => {
+                    on_reading(
+                        self.base_reading()
+                            .with_error(&format!("open error: {err}")),
+                    );
+                    std::thread::sleep(self.config.reconnect_delay);
+                    continue;
+                }
+            };
+
+            on_reading(self.base_reading());
+            let mut decoder =
+                SerialStreamDecoder::new(&self.config.device, self.config.baud, &self.config.unit);
+            let mut buf = [0_u8; 256];
+
+            loop {
+                match source.read(&mut buf) {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        for reading in decoder.push_chunk(&String::from_utf8_lossy(&buf[..n])) {
+                            on_reading(reading);
+                        }
+                    }
+                    Err(err) if err.kind() == ErrorKind::TimedOut => {}
+                    Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(err) => {
+                        on_reading(
+                            self.base_reading()
+                                .with_error(&format!("read error: {err}")),
+                        );
+                        std::thread::sleep(self.config.reconnect_delay);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     fn stream_until(
         &self,
         source: &mut dyn Read,
@@ -185,5 +232,11 @@ mod tests {
             "inappropriate ioctl for device"
         ));
         assert!(!should_try_unix_pty_fallback("permission denied"));
+    }
+
+    #[test]
+    fn run_forever_api_is_available_for_runtime_monitor() {
+        fn assert_callback<F: FnMut(crate::scale::Reading)>(_callback: F) {}
+        assert_callback(|_reading| {});
     }
 }

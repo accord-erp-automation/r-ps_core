@@ -82,6 +82,7 @@ mod tests {
     use super::*;
     use crate::print::printer::PrinterKind;
     use crate::service::mobile_contract::ServiceIdentity;
+    use crate::service::monitor_runtime::MonitorRuntimeState;
     use serde_json::Value;
 
     fn state() -> MobileHttpState {
@@ -90,6 +91,7 @@ mod tests {
             39117,
             vec![39117, 41257],
             PrinterKind::Godex,
+            MonitorRuntimeState::default(),
         )
     }
 

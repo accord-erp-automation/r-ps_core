@@ -4,9 +4,10 @@ use std::process;
 use std::thread;
 
 use rp_scale::print::PrinterKind;
+use rp_scale::scale::{SerialReader, SerialReaderConfig};
 use rp_scale::service::{
     DiscoveryRuntimeState, DiscoverySocketConfig, MobileHttpState, MobileServiceConfig,
-    ServiceIdentity, bind_mobile_http_listener, bonjour_config,
+    MonitorRuntimeState, ServiceIdentity, bind_mobile_http_listener, bonjour_config,
     collect_discovery_broadcast_targets, register_bonjour_service, serve_discovery,
     serve_mobile_http,
 };
@@ -35,7 +36,10 @@ fn serve() -> std::io::Result<()> {
     let server_ref =
         env::var("RP_SCALE_SERVER_REF").unwrap_or_else(|_| config.default_server_ref());
     let identity = ServiceIdentity::new(&config.server_name, &server_ref, "RP Scale", "operator");
-    let http_state = MobileHttpState::from_config(&config, identity.clone(), active_printer);
+    let monitor = MonitorRuntimeState::default();
+    start_scale_reader_from_env(monitor.clone());
+    let http_state =
+        MobileHttpState::from_config(&config, identity.clone(), active_printer, monitor);
     let discovery_state = DiscoveryRuntimeState::from_config(&config, identity.clone());
     let _bonjour = match register_bonjour_service(&bonjour_config(
         &identity,
@@ -72,4 +76,25 @@ fn active_printer_from_env() -> PrinterKind {
         .ok()
         .and_then(|value| PrinterKind::normalize_request(&value))
         .unwrap_or(PrinterKind::Zebra)
+}
+
+fn start_scale_reader_from_env(monitor: MonitorRuntimeState) {
+    let Ok(device) = env::var("RP_SCALE_SCALE_DEVICE") else {
+        return;
+    };
+    let device = device.trim().to_string();
+    if device.is_empty() {
+        return;
+    }
+
+    let baud = env::var("RP_SCALE_SCALE_BAUD")
+        .ok()
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .unwrap_or(9600);
+    let unit = env::var("RP_SCALE_SCALE_UNIT").unwrap_or_else(|_| "kg".to_string());
+
+    thread::spawn(move || {
+        let reader = SerialReader::new(SerialReaderConfig::new(&device, baud, &unit));
+        reader.run_forever(|reading| monitor.record_reading(reading));
+    });
 }
