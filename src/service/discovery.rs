@@ -77,7 +77,7 @@ pub fn is_discovery_probe(packet: &[u8]) -> bool {
 }
 
 pub fn bind_discovery_socket(config: &DiscoverySocketConfig) -> io::Result<UdpSocket> {
-    let socket = UdpSocket::bind(config.bind_addr)?;
+    let socket = bind_reusable_udp_socket(config.bind_addr)?;
     socket.set_broadcast(true)?;
     socket.set_read_timeout(Some(config.read_timeout))?;
     Ok(socket)
@@ -174,6 +174,109 @@ fn dedupe_socket_targets(announce_targets: Vec<SocketAddrV4>) -> Vec<SocketAddrV
         }
     }
     out
+}
+
+#[cfg(unix)]
+fn bind_reusable_udp_socket(addr: SocketAddrV4) -> io::Result<UdpSocket> {
+    use std::mem;
+    use std::os::fd::FromRawFd;
+
+    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    if let Err(err) = set_socket_reuse(fd) {
+        close_fd(fd);
+        return Err(err);
+    }
+
+    let raw_addr = socket_addr_v4_to_raw(addr);
+    let bind_result = unsafe {
+        libc::bind(
+            fd,
+            (&raw_addr as *const libc::sockaddr_in).cast::<libc::sockaddr>(),
+            mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+        )
+    };
+    if bind_result != 0 {
+        let err = io::Error::last_os_error();
+        close_fd(fd);
+        return Err(err);
+    }
+
+    Ok(unsafe { UdpSocket::from_raw_fd(fd) })
+}
+
+#[cfg(not(unix))]
+fn bind_reusable_udp_socket(addr: SocketAddrV4) -> io::Result<UdpSocket> {
+    UdpSocket::bind(addr)
+}
+
+#[cfg(unix)]
+fn set_socket_reuse(fd: libc::c_int) -> io::Result<()> {
+    set_socket_flag(fd, libc::SO_REUSEADDR)?;
+    set_reuse_port_if_supported(fd)
+}
+
+#[cfg(all(unix, any(target_os = "macos", target_os = "ios", target_os = "linux")))]
+fn set_reuse_port_if_supported(fd: libc::c_int) -> io::Result<()> {
+    set_socket_flag(fd, libc::SO_REUSEPORT)
+}
+
+#[cfg(all(
+    unix,
+    not(any(target_os = "macos", target_os = "ios", target_os = "linux"))
+))]
+fn set_reuse_port_if_supported(_fd: libc::c_int) -> io::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_socket_flag(fd: libc::c_int, option: libc::c_int) -> io::Result<()> {
+    let enabled: libc::c_int = 1;
+    let result = unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            option,
+            (&enabled as *const libc::c_int).cast::<libc::c_void>(),
+            std::mem::size_of_val(&enabled) as libc::socklen_t,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(unix)]
+fn close_fd(fd: libc::c_int) {
+    let _ = unsafe { libc::close(fd) };
+}
+
+#[cfg(unix)]
+fn socket_addr_v4_to_raw(addr: SocketAddrV4) -> libc::sockaddr_in {
+    libc::sockaddr_in {
+        #[cfg(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "tvos",
+            target_os = "watchos",
+            target_os = "visionos",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd"
+        ))]
+        sin_len: std::mem::size_of::<libc::sockaddr_in>() as u8,
+        sin_family: libc::AF_INET as libc::sa_family_t,
+        sin_port: addr.port().to_be(),
+        sin_addr: libc::in_addr {
+            s_addr: u32::from_ne_bytes(addr.ip().octets()),
+        },
+        sin_zero: [0; 8],
+    }
 }
 
 #[cfg(unix)]
@@ -328,5 +431,16 @@ mod tests {
         let local = socket.local_addr().unwrap();
 
         assert_ne!(local.port(), DEFAULT_DISCOVERY_PORT);
+    }
+
+    #[test]
+    fn discovery_socket_allows_multiple_binds_on_same_port() {
+        let first_config = DiscoverySocketConfig::new(Ipv4Addr::LOCALHOST, 0, vec![]);
+        let first = bind_discovery_socket(&first_config).unwrap();
+        let port = first.local_addr().unwrap().port();
+        let second_config = DiscoverySocketConfig::new(Ipv4Addr::LOCALHOST, port, vec![]);
+        let second = bind_discovery_socket(&second_config).unwrap();
+
+        assert_eq!(second.local_addr().unwrap().port(), port);
     }
 }
