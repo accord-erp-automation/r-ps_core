@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use super::batch_contract::BatchStartRequest;
 use super::config::MobileServiceConfig;
 use super::driver_print_contract::{
     DriverPrintErrorResponse, DriverPrintRequest, DriverPrintResponse,
@@ -163,20 +162,14 @@ pub fn handle_mobile_http_request_with_body(
             MobileHttpResponse::json(200, &ItemWarehousesResponse::driver_scope(&item_code))
         }
         ("GET", "/v1/mobile/batch/state") => {
-            let batch = state.monitor.batch_snapshot(state.active_printer);
-            MobileHttpResponse::json(200, &BatchStateResponse::from_snapshot(batch))
+            MobileHttpResponse::json(200, &BatchStateResponse::inactive(state.active_printer))
         }
         ("POST", "/v1/driver/print") | ("POST", "/v1/mobile/driver/print") => {
             driver_print_response(state, body)
         }
-        ("POST", "/v1/mobile/batch/start") => start_batch_response(state, body),
-        ("POST", "/v1/mobile/batch/stop") => stop_batch_response(state),
-        ("POST", "/v1/mobile/batch/manual-print") => MobileHttpResponse::json(
-            409,
-            &MobileHttpErrorResponse {
-                error: "manual_print_not_ready",
-            },
-        ),
+        ("POST", "/v1/mobile/batch/start")
+        | ("POST", "/v1/mobile/batch/stop")
+        | ("POST", "/v1/mobile/batch/manual-print") => driver_batch_not_supported(),
         ("GET", "/v1/mobile/batch/manual-print")
         | ("GET", "/v1/driver/print")
         | ("GET", "/v1/mobile/driver/print")
@@ -257,25 +250,13 @@ fn driver_print_response(state: &MobileHttpState, body: &str) -> MobileHttpRespo
     }
 }
 
-fn start_batch_response(state: &MobileHttpState, body: &str) -> MobileHttpResponse {
-    let result = BatchStartRequest::from_json(body)
-        .and_then(|request| request.into_snapshot(state.active_printer));
-    match result {
-        Ok(batch) => {
-            let batch = state.monitor.start_batch(batch);
-            MobileHttpResponse::json(200, &BatchStateResponse::from_snapshot(batch))
-        }
-        Err(err) => {
-            MobileHttpResponse::json(err.status(), &MobileHttpErrorResponse { error: err.code() })
-        }
-    }
-}
-
-fn stop_batch_response(state: &MobileHttpState) -> MobileHttpResponse {
-    match state.monitor.stop_batch(state.active_printer) {
-        Ok(batch) => MobileHttpResponse::json(200, &BatchStateResponse::from_snapshot(batch)),
-        Err(error) => MobileHttpResponse::json(409, &MobileHttpErrorResponse { error }),
-    }
+fn driver_batch_not_supported() -> MobileHttpResponse {
+    MobileHttpResponse::json(
+        409,
+        &MobileHttpErrorResponse {
+            error: "driver_batch_not_supported",
+        },
+    )
 }
 
 fn is_item_warehouses_path(path: &str) -> bool {

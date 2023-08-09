@@ -303,11 +303,8 @@ mod tests {
         );
         let body = body_json(response.clone());
 
-        assert_eq!(response.status, 200);
-        assert_eq!(body["batch"]["active"], true);
-        assert_eq!(body["batch"]["item_code"], "ITEM-1");
-        assert_eq!(body["batch"]["printer"], "godex");
-        assert_eq!(body["batch"]["print_mode"], "label");
+        assert_eq!(response.status, 409);
+        assert_eq!(body["error"], "driver_batch_not_supported");
     }
 
     #[test]

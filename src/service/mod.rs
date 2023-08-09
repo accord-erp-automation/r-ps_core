@@ -1,4 +1,3 @@
-pub mod batch_contract;
 pub mod bonjour;
 pub mod config;
 pub mod discovery;
@@ -11,7 +10,6 @@ pub mod mobile_contract;
 pub mod monitor_contract;
 pub mod monitor_runtime;
 
-pub use batch_contract::{BatchStartError, BatchStartRequest};
 pub use bonjour::{
     BONJOUR_SERVICE_TYPE, BonjourError, BonjourService, BonjourServiceConfig, bonjour_config,
     register_bonjour_service,

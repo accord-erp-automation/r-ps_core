@@ -164,9 +164,9 @@ fn batch_state_matches_gscale_shape_with_driver_inactive_batch() {
 }
 
 #[test]
-fn batch_start_stores_mobile_provided_values_in_local_runtime() {
+fn batch_start_is_rejected_until_split_contract_exists() {
     let state = state(PrinterKind::Godex);
-    let started = json(handle_mobile_http_request_with_body(
+    let started = handle_mobile_http_request_with_body(
         &state,
         "POST",
         "/v1/mobile/batch/start",
@@ -180,7 +180,8 @@ fn batch_start_stores_mobile_provided_values_in_local_runtime() {
             "tare_enabled":true,
             "tare_kg":0.25
         }"#,
-    ));
+    );
+    let started_body = json(started.clone());
     let current = json(handle_mobile_http_request(
         &state,
         "GET",
@@ -192,16 +193,12 @@ fn batch_start_stores_mobile_provided_values_in_local_runtime() {
         "/v1/mobile/monitor/state",
     ));
 
-    assert_eq!(started["ok"], true);
-    assert_eq!(started["batch"]["active"], true);
-    assert_eq!(started["batch"]["item_code"], "ITEM-1");
-    assert_eq!(started["batch"]["item_name"], "Sugar");
-    assert_eq!(started["batch"]["warehouse"], "Stores - A");
-    assert_eq!(started["batch"]["printer"], "godex");
-    assert_eq!(started["batch"]["print_mode"], "label");
-    assert_eq!(started["batch"]["tare"], true);
-    assert_eq!(current["batch"]["active"], true);
-    assert_eq!(monitor["state"]["batch"]["item_code"], "ITEM-1");
+    assert_eq!(started.status, 409);
+    assert_eq!(started_body["error"], "driver_batch_not_supported");
+    assert_eq!(current["batch"]["active"], false);
+    assert_eq!(current["batch"]["item_code"], "");
+    assert_eq!(monitor["state"]["batch"]["active"], false);
+    assert_eq!(monitor["state"]["batch"]["item_code"], "");
 }
 
 #[test]
@@ -314,42 +311,23 @@ fn driver_print_maps_executor_failure_to_error_response() {
 }
 
 #[test]
-fn batch_start_rejects_missing_item_or_warehouse() {
-    let response = handle_mobile_http_request_with_body(
-        &state(PrinterKind::Zebra),
-        "POST",
+fn batch_mutation_endpoints_are_rejected_in_driver_scope() {
+    for path in [
         "/v1/mobile/batch/start",
-        r#"{"item_code":"ITEM-1"}"#,
-    );
-    let body = json(response.clone());
-
-    assert_eq!(response.status, 400);
-    assert_eq!(body["error"], "item_code_and_warehouse_required");
-}
-
-#[test]
-fn batch_stop_clears_local_runtime_batch() {
-    let state = state(PrinterKind::Zebra);
-    let _ = handle_mobile_http_request_with_body(
-        &state,
-        "POST",
-        "/v1/mobile/batch/start",
-        r#"{"item_code":"ITEM-1","warehouse":"Stores - A","printer":"zebra"}"#,
-    );
-    let stopped = json(handle_mobile_http_request(
-        &state,
-        "POST",
         "/v1/mobile/batch/stop",
-    ));
-    let current = json(handle_mobile_http_request(
-        &state,
-        "GET",
-        "/v1/mobile/batch/state",
-    ));
+        "/v1/mobile/batch/manual-print",
+    ] {
+        let response = handle_mobile_http_request_with_body(
+            &state(PrinterKind::Zebra),
+            "POST",
+            path,
+            r#"{"item_code":"ITEM-1","warehouse":"Stores - A"}"#,
+        );
+        let body = json(response.clone());
 
-    assert_eq!(stopped["ok"], true);
-    assert_eq!(stopped["batch"]["active"], false);
-    assert_eq!(current["batch"]["active"], false);
+        assert_eq!(response.status, 409, "{path}");
+        assert_eq!(body["error"], "driver_batch_not_supported", "{path}");
+    }
 }
 
 #[test]
