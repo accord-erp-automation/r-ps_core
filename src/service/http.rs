@@ -4,6 +4,7 @@ use super::config::MobileServiceConfig;
 use super::mobile_contract::{
     HandshakeResponse, HealthResponse, PrinterCapabilitiesResponse, ServiceIdentity,
 };
+use super::monitor_contract::MonitorResponse;
 use crate::print::capabilities::manifest_for;
 use crate::print::printer::PrinterKind;
 
@@ -104,14 +105,19 @@ pub fn handle_mobile_http_request(
                 PrinterCapabilitiesResponse::from_manifest(manifest_for(state.active_printer));
             MobileHttpResponse::json(200, &response)
         }
-        (_, "/healthz") | (_, "/v1/mobile/handshake") | (_, "/v1/mobile/printer/capabilities") => {
-            MobileHttpResponse::json(
-                405,
-                &MobileHttpErrorResponse {
-                    error: "method_not_allowed",
-                },
-            )
+        ("GET", "/v1/mobile/monitor/state") => {
+            let response = MonitorResponse::driver_idle(&state.identity, state.active_printer);
+            MobileHttpResponse::json(200, &response)
         }
+        (_, "/healthz")
+        | (_, "/v1/mobile/handshake")
+        | (_, "/v1/mobile/printer/capabilities")
+        | (_, "/v1/mobile/monitor/state") => MobileHttpResponse::json(
+            405,
+            &MobileHttpErrorResponse {
+                error: "method_not_allowed",
+            },
+        ),
         _ => MobileHttpResponse::json(404, &MobileHttpErrorResponse { error: "not_found" }),
     }
 }
@@ -190,6 +196,26 @@ mod tests {
             body["active_printer"]["unsupported_modes"][0],
             "rfid_epc_write"
         );
+    }
+
+    #[test]
+    fn monitor_state_matches_mobile_snapshot_shape() {
+        let body = json(handle_mobile_http_request(
+            &state(PrinterKind::Godex),
+            "GET",
+            "/v1/mobile/monitor/state",
+        ));
+
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["profile"]["ref"], "dev-operator");
+        assert_eq!(body["state"]["scale"]["weight"], Value::Null);
+        assert_eq!(body["state"]["scale"]["unit"], "kg");
+        assert_eq!(body["state"]["zebra"]["connected"], false);
+        assert_eq!(body["state"]["printer"]["connected"], false);
+        assert_eq!(body["state"]["printer"]["kind"], "godex");
+        assert_eq!(body["state"]["batch"]["active"], false);
+        assert_eq!(body["state"]["print_request"]["status"], "idle");
+        assert_eq!(body["printer"]["label"], "ulanmagan");
     }
 
     #[test]

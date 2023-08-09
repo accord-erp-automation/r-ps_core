@@ -5,6 +5,7 @@ pub mod discovery_runtime;
 pub mod http;
 pub mod http_runtime;
 pub mod mobile_contract;
+pub mod monitor_contract;
 
 pub use bonjour::{
     BONJOUR_SERVICE_TYPE, BonjourError, BonjourService, BonjourServiceConfig, bonjour_config,
@@ -27,3 +28,4 @@ pub use mobile_contract::{
     APP_ID, ActivePrinterResponse, DiscoveryAnnouncement, HandshakeResponse, HealthResponse,
     PrinterCapabilitiesResponse, PrinterCapabilityFlagsResponse, SERVICE_ID, ServiceIdentity,
 };
+pub use monitor_contract::{MonitorResponse, MonitorState};

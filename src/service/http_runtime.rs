@@ -127,6 +127,20 @@ mod tests {
     }
 
     #[test]
+    fn routes_raw_monitor_state_request() {
+        let response = route_raw_http_request(
+            "GET /v1/mobile/monitor/state HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            &state(),
+        );
+        let body = body_json(response.clone());
+
+        assert_eq!(response.status, 200);
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["state"]["batch"]["active"], false);
+        assert_eq!(body["state"]["print_request"]["status"], "idle");
+    }
+
+    #[test]
     fn rejects_malformed_http_request() {
         let response = route_raw_http_request("broken", &state());
         let body = body_json(response.clone());
