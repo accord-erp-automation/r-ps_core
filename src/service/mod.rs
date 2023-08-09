@@ -1,3 +1,4 @@
+pub mod batch_contract;
 pub mod bonjour;
 pub mod config;
 pub mod discovery;
@@ -8,6 +9,7 @@ pub mod mobile_contract;
 pub mod monitor_contract;
 pub mod monitor_runtime;
 
+pub use batch_contract::{BatchStartError, BatchStartRequest};
 pub use bonjour::{
     BONJOUR_SERVICE_TYPE, BonjourError, BonjourService, BonjourServiceConfig, bonjour_config,
     register_bonjour_service,
@@ -21,7 +23,10 @@ pub use discovery::{
     bind_announcement_socket, collect_discovery_broadcast_targets, discovery_response_for_packet,
 };
 pub use discovery_runtime::{DiscoveryRuntimeState, serve_discovery, serve_discovery_socket};
-pub use http::{MobileHttpResponse, MobileHttpState, handle_mobile_http_request};
+pub use http::{
+    MobileHttpResponse, MobileHttpState, handle_mobile_http_request,
+    handle_mobile_http_request_with_body,
+};
 pub use http_runtime::{
     bind_mobile_http_listener, handle_mobile_http_stream, route_raw_http_request, serve_mobile_http,
 };

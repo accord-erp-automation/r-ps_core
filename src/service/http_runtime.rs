@@ -3,7 +3,7 @@ use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use super::http::{MobileHttpResponse, MobileHttpState, handle_mobile_http_request};
+use super::http::{MobileHttpResponse, MobileHttpState, handle_mobile_http_request_with_body};
 
 const MONITOR_STREAM_PATH: &str = "/v1/mobile/monitor/stream";
 const MONITOR_STREAM_TICK: Duration = Duration::from_millis(350);
@@ -73,7 +73,14 @@ pub fn route_raw_http_request(raw: &str, state: &MobileHttpState) -> MobileHttpR
             },
         );
     };
-    handle_mobile_http_request(state, method, path)
+    handle_mobile_http_request_with_body(state, method, path, parse_body(raw))
+}
+
+fn parse_body(raw: &str) -> &str {
+    raw.split_once("\r\n\r\n")
+        .or_else(|| raw.split_once("\n\n"))
+        .map(|(_, body)| body)
+        .unwrap_or("")
 }
 
 fn parse_request_line(raw: &str) -> Option<(&str, &str)> {
@@ -151,6 +158,7 @@ fn write_http_response(stream: &mut TcpStream, response: &MobileHttpResponse) ->
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        409 => "Conflict",
         500 => "Internal Server Error",
         _ => "OK",
     };
@@ -283,6 +291,26 @@ mod tests {
         assert_eq!(response.status, 200);
         assert_eq!(body["item_code"], "ITEM 1");
         assert!(body["warehouses"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn routes_raw_batch_start_with_json_body() {
+        let response = route_raw_http_request(
+            "POST /v1/mobile/batch/start HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{\"item_code\":\"ITEM-1\",\"item_name\":\"Sugar\",\"warehouse\":\"Stores - A\",\"printer\":\"godex\",\"print_mode\":\"rfid\"}",
+            &state(),
+        );
+        let body = body_json(response.clone());
+
+        assert_eq!(response.status, 200);
+        assert_eq!(body["batch"]["active"], true);
+        assert_eq!(body["batch"]["item_code"], "ITEM-1");
+        assert_eq!(body["batch"]["printer"], "godex");
+        assert_eq!(body["batch"]["print_mode"], "label");
+    }
+
+    #[test]
+    fn parses_empty_raw_http_body() {
+        assert_eq!(parse_body("GET /healthz HTTP/1.1\r\n\r\n"), "");
     }
 
     #[test]

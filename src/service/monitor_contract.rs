@@ -14,11 +14,23 @@ pub struct MonitorResponse {
 
 impl MonitorResponse {
     pub fn driver_idle(identity: &ServiceIdentity, active_printer: PrinterKind) -> Self {
+        Self::driver_idle_with_batch(
+            identity,
+            active_printer,
+            BatchSnapshot::inactive(active_printer),
+        )
+    }
+
+    pub fn driver_idle_with_batch(
+        identity: &ServiceIdentity,
+        active_printer: PrinterKind,
+        batch: BatchSnapshot,
+    ) -> Self {
         let printer = MonitorPrinter::disconnected(active_printer);
         Self {
             ok: true,
             profile: MonitorProfile::from_identity(identity),
-            state: MonitorState::driver_idle(printer.clone(), active_printer),
+            state: MonitorState::driver_idle(printer.clone(), batch),
             printer,
         }
     }
@@ -28,11 +40,25 @@ impl MonitorResponse {
         active_printer: PrinterKind,
         reading: &Reading,
     ) -> Self {
+        Self::driver_with_scale_and_batch(
+            identity,
+            active_printer,
+            reading,
+            BatchSnapshot::inactive(active_printer),
+        )
+    }
+
+    pub fn driver_with_scale_and_batch(
+        identity: &ServiceIdentity,
+        active_printer: PrinterKind,
+        reading: &Reading,
+        batch: BatchSnapshot,
+    ) -> Self {
         let printer = MonitorPrinter::disconnected(active_printer);
         Self {
             ok: true,
             profile: MonitorProfile::from_identity(identity),
-            state: MonitorState::driver_with_scale(printer.clone(), active_printer, reading),
+            state: MonitorState::driver_with_scale(printer.clone(), reading, batch),
             printer,
         }
     }
@@ -46,10 +72,11 @@ pub struct BatchStateResponse {
 
 impl BatchStateResponse {
     pub fn inactive(active_printer: PrinterKind) -> Self {
-        Self {
-            ok: true,
-            batch: BatchSnapshot::inactive(active_printer),
-        }
+        Self::from_snapshot(BatchSnapshot::inactive(active_printer))
+    }
+
+    pub fn from_snapshot(batch: BatchSnapshot) -> Self {
+        Self { ok: true, batch }
     }
 }
 
@@ -89,28 +116,24 @@ pub struct MonitorState {
 }
 
 impl MonitorState {
-    fn driver_idle(printer: MonitorPrinter, active_printer: PrinterKind) -> Self {
+    fn driver_idle(printer: MonitorPrinter, batch: BatchSnapshot) -> Self {
         Self {
             scale: ScaleSnapshot::disconnected(),
             zebra: ZebraSnapshot::disconnected(),
             printer,
-            batch: BatchSnapshot::inactive(active_printer),
+            batch,
             print_request: PrintRequestSnapshot::idle(),
             archive_print: ArchivePrintSnapshot::idle(),
             updated_at: String::new(),
         }
     }
 
-    fn driver_with_scale(
-        printer: MonitorPrinter,
-        active_printer: PrinterKind,
-        reading: &Reading,
-    ) -> Self {
+    fn driver_with_scale(printer: MonitorPrinter, reading: &Reading, batch: BatchSnapshot) -> Self {
         Self {
             scale: ScaleSnapshot::from_reading(reading),
             zebra: ZebraSnapshot::disconnected(),
             printer,
-            batch: BatchSnapshot::inactive(active_printer),
+            batch,
             print_request: PrintRequestSnapshot::idle(),
             archive_print: ArchivePrintSnapshot::idle(),
             updated_at: String::new(),
@@ -233,7 +256,7 @@ pub struct BatchSnapshot {
 }
 
 impl BatchSnapshot {
-    fn inactive(active_printer: PrinterKind) -> Self {
+    pub fn inactive(active_printer: PrinterKind) -> Self {
         let printer = active_printer.as_str().to_string();
         let print_mode = if active_printer == PrinterKind::Godex {
             "label"
