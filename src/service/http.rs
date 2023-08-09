@@ -3,6 +3,7 @@ use serde::Serialize;
 use super::config::MobileServiceConfig;
 use super::mobile_contract::{
     HandshakeResponse, HealthResponse, PrinterCapabilitiesResponse, ServiceIdentity,
+    SetupStatusResponse,
 };
 use super::monitor_runtime::MonitorRuntimeState;
 use crate::print::capabilities::manifest_for;
@@ -116,10 +117,14 @@ pub fn handle_mobile_http_request(
                 .snapshot(&state.identity, state.active_printer);
             MobileHttpResponse::json(200, &response)
         }
+        ("GET", "/v1/mobile/setup/status") => {
+            MobileHttpResponse::json(200, &SetupStatusResponse::driver_scope())
+        }
         (_, "/healthz")
         | (_, "/v1/mobile/handshake")
         | (_, "/v1/mobile/printer/capabilities")
-        | (_, "/v1/mobile/monitor/state") => MobileHttpResponse::json(
+        | (_, "/v1/mobile/monitor/state")
+        | (_, "/v1/mobile/setup/status") => MobileHttpResponse::json(
             405,
             &MobileHttpErrorResponse {
                 error: "method_not_allowed",
@@ -224,6 +229,27 @@ mod tests {
         assert_eq!(body["state"]["batch"]["active"], false);
         assert_eq!(body["state"]["print_request"]["status"], "idle");
         assert_eq!(body["printer"]["label"], "ulanmagan");
+    }
+
+    #[test]
+    fn setup_status_matches_gscale_fields_without_owning_erp() {
+        let body = json(handle_mobile_http_request(
+            &state(PrinterKind::Godex),
+            "GET",
+            "/v1/mobile/setup/status",
+        ));
+
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["erp_write_configured"], false);
+        assert_eq!(body["erp_write_simulated"], false);
+        assert_eq!(body["erp_read_configured"], false);
+        assert_eq!(body["batch_actions_ready"], false);
+        assert_eq!(body["erp_url"], "");
+        assert_eq!(body["erp_read_url"], "");
+        assert_eq!(body["warehouse_mode"], "manual");
+        assert_eq!(body["default_warehouse"], "");
+        assert_eq!(body["warehouse_default_configured"], false);
+        assert_eq!(body["warehouse_default_active"], false);
     }
 
     #[test]

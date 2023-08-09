@@ -28,6 +28,7 @@ pub use http_runtime::{
 pub use mobile_contract::{
     APP_ID, ActivePrinterResponse, DiscoveryAnnouncement, HandshakeResponse, HealthResponse,
     PrinterCapabilitiesResponse, PrinterCapabilityFlagsResponse, SERVICE_ID, ServiceIdentity,
+    SetupStatusResponse,
 };
 pub use monitor_contract::{MonitorResponse, MonitorState};
 pub use monitor_runtime::MonitorRuntimeState;

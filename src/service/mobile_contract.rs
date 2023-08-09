@@ -163,6 +163,39 @@ impl PrinterCapabilitiesResponse {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct SetupStatusResponse {
+    pub ok: bool,
+    pub erp_write_configured: bool,
+    pub erp_write_simulated: bool,
+    pub erp_read_configured: bool,
+    pub batch_actions_ready: bool,
+    pub erp_url: String,
+    pub erp_read_url: String,
+    pub warehouse_mode: &'static str,
+    pub default_warehouse: String,
+    pub warehouse_default_configured: bool,
+    pub warehouse_default_active: bool,
+}
+
+impl SetupStatusResponse {
+    pub fn driver_scope() -> Self {
+        Self {
+            ok: true,
+            erp_write_configured: false,
+            erp_write_simulated: false,
+            erp_read_configured: false,
+            batch_actions_ready: false,
+            erp_url: String::new(),
+            erp_read_url: String::new(),
+            warehouse_mode: "manual",
+            default_warehouse: String::new(),
+            warehouse_default_configured: false,
+            warehouse_default_active: false,
+        }
+    }
+}
+
 fn normalize(value: &str, fallback: &str) -> String {
     match value.trim() {
         "" => fallback.to_string(),
@@ -239,5 +272,16 @@ mod tests {
         assert!(json.contains(r#""rfid_epc_write":false"#));
         assert!(json.contains(r#""qr":true"#));
         assert!(json.contains(r#""unsupported_modes":["rfid_epc_write"]"#));
+    }
+
+    #[test]
+    fn setup_status_is_driver_scope_and_does_not_claim_erp_readiness() {
+        let status = SetupStatusResponse::driver_scope();
+
+        assert!(status.ok);
+        assert!(!status.erp_write_configured);
+        assert!(!status.erp_read_configured);
+        assert!(!status.batch_actions_ready);
+        assert_eq!(status.warehouse_mode, "manual");
     }
 }

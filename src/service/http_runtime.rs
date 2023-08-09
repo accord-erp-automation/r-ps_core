@@ -232,6 +232,20 @@ mod tests {
     }
 
     #[test]
+    fn routes_raw_setup_status_request() {
+        let response = route_raw_http_request(
+            "GET /v1/mobile/setup/status HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            &state(),
+        );
+        let body = body_json(response.clone());
+
+        assert_eq!(response.status, 200);
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["erp_write_configured"], false);
+        assert_eq!(body["batch_actions_ready"], false);
+    }
+
+    #[test]
     fn builds_monitor_stream_snapshot_frame_like_gscale_sse() {
         let frame = monitor_stream_snapshot_frame(&state()).unwrap();
 
