@@ -39,6 +39,21 @@ impl MonitorResponse {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct BatchStateResponse {
+    pub ok: bool,
+    pub batch: BatchSnapshot,
+}
+
+impl BatchStateResponse {
+    pub fn inactive(active_printer: PrinterKind) -> Self {
+        Self {
+            ok: true,
+            batch: BatchSnapshot::inactive(active_printer),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct MonitorProfile {
     pub role: String,
     pub display_name: String,
@@ -387,5 +402,16 @@ mod tests {
         assert_eq!(body["state"]["scale"]["weight"], 2.75);
         assert_eq!(body["state"]["scale"]["unit"], "kg");
         assert_eq!(body["state"]["scale"]["stable"], false);
+    }
+
+    #[test]
+    fn builds_batch_state_response_like_gscale_mobileapi() {
+        let body = serde_json::to_value(BatchStateResponse::inactive(PrinterKind::Godex)).unwrap();
+
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["batch"]["active"], false);
+        assert_eq!(body["batch"]["printer"], "godex");
+        assert_eq!(body["batch"]["print_mode"], "label");
+        assert_eq!(body["batch"]["quantity_source"], "scale");
     }
 }

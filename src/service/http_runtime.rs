@@ -246,6 +246,20 @@ mod tests {
     }
 
     #[test]
+    fn routes_raw_batch_state_request() {
+        let response = route_raw_http_request(
+            "GET /v1/mobile/batch/state HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            &state(),
+        );
+        let body = body_json(response.clone());
+
+        assert_eq!(response.status, 200);
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["batch"]["active"], false);
+        assert_eq!(body["batch"]["printer"], "godex");
+    }
+
+    #[test]
     fn builds_monitor_stream_snapshot_frame_like_gscale_sse() {
         let frame = monitor_stream_snapshot_frame(&state()).unwrap();
 
