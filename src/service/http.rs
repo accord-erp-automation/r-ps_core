@@ -1,7 +1,13 @@
+use std::sync::Arc;
+
 use serde::Serialize;
 
 use super::batch_contract::BatchStartRequest;
 use super::config::MobileServiceConfig;
+use super::driver_print_contract::{
+    DriverPrintErrorResponse, DriverPrintRequest, DriverPrintResponse,
+};
+use super::driver_print_runtime::{DriverPrintExecutor, UnconfiguredDriverPrintExecutor};
 use super::mobile_contract::{
     EmptyArchiveResponse, EmptyItemsResponse, EmptyWarehousesResponse, HandshakeResponse,
     HealthResponse, ItemWarehousesResponse, PrinterCapabilitiesResponse, ServiceIdentity,
@@ -11,6 +17,7 @@ use super::monitor_contract::BatchStateResponse;
 use super::monitor_runtime::MonitorRuntimeState;
 use crate::print::capabilities::manifest_for;
 use crate::print::printer::PrinterKind;
+use crate::runtime::prepare_print_command;
 
 #[derive(Clone, Debug)]
 pub struct MobileHttpState {
@@ -19,6 +26,7 @@ pub struct MobileHttpState {
     pub candidate_ports: Vec<u16>,
     pub active_printer: PrinterKind,
     pub monitor: MonitorRuntimeState,
+    pub print_executor: Arc<dyn DriverPrintExecutor>,
 }
 
 impl MobileHttpState {
@@ -35,6 +43,7 @@ impl MobileHttpState {
             candidate_ports,
             active_printer,
             monitor,
+            print_executor: Arc::new(UnconfiguredDriverPrintExecutor),
         }
     }
 
@@ -51,6 +60,11 @@ impl MobileHttpState {
             active_printer,
             monitor,
         )
+    }
+
+    pub fn with_print_executor(mut self, executor: Arc<dyn DriverPrintExecutor>) -> Self {
+        self.print_executor = executor;
+        self
     }
 }
 
@@ -152,6 +166,9 @@ pub fn handle_mobile_http_request_with_body(
             let batch = state.monitor.batch_snapshot(state.active_printer);
             MobileHttpResponse::json(200, &BatchStateResponse::from_snapshot(batch))
         }
+        ("POST", "/v1/driver/print") | ("POST", "/v1/mobile/driver/print") => {
+            driver_print_response(state, body)
+        }
         ("POST", "/v1/mobile/batch/start") => start_batch_response(state, body),
         ("POST", "/v1/mobile/batch/stop") => stop_batch_response(state),
         ("POST", "/v1/mobile/batch/manual-print") => MobileHttpResponse::json(
@@ -161,6 +178,8 @@ pub fn handle_mobile_http_request_with_body(
             },
         ),
         ("GET", "/v1/mobile/batch/manual-print")
+        | ("GET", "/v1/driver/print")
+        | ("GET", "/v1/mobile/driver/print")
         | ("GET", "/v1/mobile/batch/start")
         | ("GET", "/v1/mobile/batch/stop") => MobileHttpResponse::json(
             405,
@@ -170,6 +189,8 @@ pub fn handle_mobile_http_request_with_body(
         ),
         (_, "/v1/mobile/batch/start")
         | (_, "/v1/mobile/batch/stop")
+        | (_, "/v1/driver/print")
+        | (_, "/v1/mobile/driver/print")
         | (_, "/v1/mobile/batch/manual-print") => MobileHttpResponse::json(
             405,
             &MobileHttpErrorResponse {
@@ -198,6 +219,41 @@ pub fn handle_mobile_http_request_with_body(
             },
         ),
         _ => MobileHttpResponse::json(404, &MobileHttpErrorResponse { error: "not_found" }),
+    }
+}
+
+fn driver_print_response(state: &MobileHttpState, body: &str) -> MobileHttpResponse {
+    let job = match DriverPrintRequest::from_json(body)
+        .and_then(|request| request.into_job(state.active_printer))
+    {
+        Ok(job) => job,
+        Err(err) => {
+            return MobileHttpResponse::json(
+                err.status(),
+                &DriverPrintErrorResponse::new(err.code(), err.code()),
+            );
+        }
+    };
+
+    let prepared = match prepare_print_command(&job.reading, job.selection.clone(), &job.epc) {
+        Ok(prepared) => prepared,
+        Err(err) => {
+            return MobileHttpResponse::json(
+                422,
+                &DriverPrintErrorResponse::new("print_prepare_failed", err.to_string()),
+            );
+        }
+    };
+
+    match state.print_executor.execute(&prepared) {
+        Ok(result) => MobileHttpResponse::json(
+            200,
+            &DriverPrintResponse::done(&job, &prepared, result.status),
+        ),
+        Err(err) => MobileHttpResponse::json(
+            err.status(),
+            &DriverPrintErrorResponse::new(err.code(), err.detail()),
+        ),
     }
 }
 

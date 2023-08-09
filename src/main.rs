@@ -1,6 +1,7 @@
 use std::env;
 use std::net::Ipv4Addr;
 use std::process;
+use std::sync::Arc;
 use std::thread;
 
 use rp_scale::print::PrinterKind;
@@ -9,7 +10,7 @@ use rp_scale::service::{
     DiscoveryRuntimeState, DiscoverySocketConfig, MobileHttpState, MobileServiceConfig,
     MonitorRuntimeState, ServiceIdentity, bind_mobile_http_listener, bonjour_config,
     collect_discovery_broadcast_targets, register_bonjour_service, serve_discovery,
-    serve_mobile_http,
+    serve_mobile_http, simulated_executor_from_env,
 };
 
 fn main() {
@@ -38,8 +39,13 @@ fn serve() -> std::io::Result<()> {
     let identity = ServiceIdentity::new(&config.server_name, &server_ref, "RP Scale", "operator");
     let monitor = MonitorRuntimeState::default();
     start_scale_reader_from_env(monitor.clone());
-    let http_state =
+    let mut http_state =
         MobileHttpState::from_config(&config, identity.clone(), active_printer, monitor);
+    if let Ok(mode) = env::var("RP_SCALE_PRINT_EXECUTOR")
+        && let Some(executor) = simulated_executor_from_env(&mode)
+    {
+        http_state = http_state.with_print_executor(Arc::new(executor));
+    }
     let discovery_state = DiscoveryRuntimeState::from_config(&config, identity.clone());
     let _bonjour = match register_bonjour_service(&bonjour_config(
         &identity,

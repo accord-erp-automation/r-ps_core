@@ -1,5 +1,12 @@
 use super::*;
+use std::sync::Arc;
+
+use crate::print::PrintExecutionResult;
+use crate::runtime::PrintPipelineResult;
+use crate::service::driver_print_runtime::{DriverPrintExecutionError, DriverPrintExecutor};
 use serde_json::Value;
+
+const EPC: &str = "3034257BF7194E406994036B";
 
 fn state(printer: PrinterKind) -> MobileHttpState {
     MobileHttpState::new(
@@ -11,8 +18,44 @@ fn state(printer: PrinterKind) -> MobileHttpState {
     )
 }
 
+fn state_with_executor<E>(printer: PrinterKind, executor: E) -> MobileHttpState
+where
+    E: DriverPrintExecutor + 'static,
+{
+    state(printer).with_print_executor(Arc::new(executor))
+}
+
 fn json(response: MobileHttpResponse) -> Value {
     serde_json::from_slice(&response.body).unwrap()
+}
+
+#[derive(Debug)]
+struct AcceptingDriverPrintExecutor;
+
+impl DriverPrintExecutor for AcceptingDriverPrintExecutor {
+    fn execute(
+        &self,
+        prepared: &PrintPipelineResult,
+    ) -> Result<PrintExecutionResult, DriverPrintExecutionError> {
+        Ok(PrintExecutionResult {
+            printer: prepared.plan.printer,
+            status: "OK".to_string(),
+        })
+    }
+}
+
+#[derive(Debug)]
+struct FailingDriverPrintExecutor;
+
+impl DriverPrintExecutor for FailingDriverPrintExecutor {
+    fn execute(
+        &self,
+        _prepared: &PrintPipelineResult,
+    ) -> Result<PrintExecutionResult, DriverPrintExecutionError> {
+        Err(DriverPrintExecutionError::Failed(
+            "printer offline".to_string(),
+        ))
+    }
 }
 
 #[test]
@@ -159,6 +202,115 @@ fn batch_start_stores_mobile_provided_values_in_local_runtime() {
     assert_eq!(started["batch"]["tare"], true);
     assert_eq!(current["batch"]["active"], true);
     assert_eq!(monitor["state"]["batch"]["item_code"], "ITEM-1");
+}
+
+#[test]
+fn driver_print_executes_rs_owned_request_and_returns_done_response() {
+    let state = state_with_executor(PrinterKind::Godex, AcceptingDriverPrintExecutor);
+    let response = handle_mobile_http_request_with_body(
+        &state,
+        "POST",
+        "/v1/driver/print",
+        &format!(
+            r#"{{
+                "epc":"{EPC}",
+                "item_code":"ITEM-1",
+                "item_name":"Green Tea",
+                "warehouse":"Stores - A",
+                "printer":"godex",
+                "gross_qty":2.5,
+                "tare_enabled":true,
+                "tare_kg":0.78
+            }}"#
+        ),
+    );
+    let body = json(response.clone());
+
+    assert_eq!(response.status, 200);
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["status"], "done");
+    assert_eq!(body["epc"], EPC);
+    assert_eq!(body["printer"], "godex");
+    assert_eq!(body["mode"], "label");
+    assert_eq!(body["qty"], 1.72);
+    assert_eq!(body["gross_qty"], 2.5);
+    assert_eq!(body["printer_status"], "OK");
+}
+
+#[test]
+fn driver_print_fails_closed_when_printer_executor_is_missing() {
+    let response = handle_mobile_http_request_with_body(
+        &state(PrinterKind::Zebra),
+        "POST",
+        "/v1/driver/print",
+        &format!(
+            r#"{{
+                "epc":"{EPC}",
+                "item_code":"ITEM-1",
+                "warehouse":"Stores - A",
+                "printer":"zebra",
+                "print_mode":"rfid",
+                "gross_qty":1.25
+            }}"#
+        ),
+    );
+    let body = json(response.clone());
+
+    assert_eq!(response.status, 503);
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"], "printer_executor_not_configured");
+}
+
+#[test]
+fn driver_print_rejects_unsupported_printer_mode_before_execution() {
+    let state = state_with_executor(PrinterKind::Godex, AcceptingDriverPrintExecutor);
+    let response = handle_mobile_http_request_with_body(
+        &state,
+        "POST",
+        "/v1/driver/print",
+        &format!(
+            r#"{{
+                "epc":"{EPC}",
+                "item_code":"ITEM-1",
+                "warehouse":"Stores - A",
+                "printer":"godex",
+                "print_mode":"rfid",
+                "gross_qty":1.25
+            }}"#
+        ),
+    );
+    let body = json(response.clone());
+
+    assert_eq!(response.status, 422);
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"], "print_prepare_failed");
+    assert_eq!(body["detail"], "godex does not support rfid");
+}
+
+#[test]
+fn driver_print_maps_executor_failure_to_error_response() {
+    let state = state_with_executor(PrinterKind::Zebra, FailingDriverPrintExecutor);
+    let response = handle_mobile_http_request_with_body(
+        &state,
+        "POST",
+        "/v1/mobile/driver/print",
+        &format!(
+            r#"{{
+                "epc":"{EPC}",
+                "item_code":"ITEM-1",
+                "warehouse":"Stores - A",
+                "printer":"zebra",
+                "print_mode":"label",
+                "gross_qty":1.25
+            }}"#
+        ),
+    );
+    let body = json(response.clone());
+
+    assert_eq!(response.status, 500);
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"], "print_execution_failed");
+    assert_eq!(body["detail"], "printer offline");
 }
 
 #[test]

@@ -3,6 +3,8 @@ pub mod bonjour;
 pub mod config;
 pub mod discovery;
 pub mod discovery_runtime;
+pub mod driver_print_contract;
+pub mod driver_print_runtime;
 pub mod http;
 pub mod http_runtime;
 pub mod mobile_contract;
@@ -23,6 +25,14 @@ pub use discovery::{
     bind_announcement_socket, collect_discovery_broadcast_targets, discovery_response_for_packet,
 };
 pub use discovery_runtime::{DiscoveryRuntimeState, serve_discovery, serve_discovery_socket};
+pub use driver_print_contract::{
+    DriverPrintErrorResponse, DriverPrintJob, DriverPrintRequest, DriverPrintRequestError,
+    DriverPrintResponse,
+};
+pub use driver_print_runtime::{
+    DriverPrintExecutionError, DriverPrintExecutor, SimulatedDriverPrintExecutor,
+    UnconfiguredDriverPrintExecutor, simulated_executor_from_env,
+};
 pub use http::{
     MobileHttpResponse, MobileHttpState, handle_mobile_http_request,
     handle_mobile_http_request_with_body,

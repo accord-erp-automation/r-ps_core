@@ -159,7 +159,9 @@ fn write_http_response(stream: &mut TcpStream, response: &MobileHttpResponse) ->
         404 => "Not Found",
         405 => "Method Not Allowed",
         409 => "Conflict",
+        422 => "Unprocessable Entity",
         500 => "Internal Server Error",
+        503 => "Service Unavailable",
         _ => "OK",
     };
     write!(
