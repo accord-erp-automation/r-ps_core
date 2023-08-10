@@ -40,7 +40,7 @@ pub fn execute_pack_render<T: GodexTransport>(
     render: &GodexPackRender,
 ) -> Result<String, GodexExecutionError> {
     transport
-        .send("^XSET,BUZZER,0", false, Duration::from_millis(120))
+        .send("^XSET,BUZZER,0", false, Duration::ZERO)
         .map_err(|err| GodexExecutionError::new(format!("disable buzzer: {err}")))?;
 
     download_graphic(
@@ -58,14 +58,14 @@ pub fn execute_pack_render<T: GodexTransport>(
 
     for (idx, command) in render.commands.iter().enumerate() {
         transport
-            .send(command, false, Duration::from_millis(120))
+            .send(command, false, Duration::ZERO)
             .map_err(|err| {
                 GodexExecutionError::new(format!("send print command {}: {err}", idx + 1))
             })?;
     }
 
     transport
-        .send("~S,STATUS", true, Duration::from_millis(120))
+        .send("~S,STATUS", true, Duration::ZERO)
         .map_err(|err| GodexExecutionError::new(format!("final status: {err}")))
 }
 
@@ -75,12 +75,12 @@ fn download_graphic<T: GodexTransport>(
     graphic: &[u8],
     label: &str,
 ) -> Result<(), GodexExecutionError> {
-    let _ = transport.send(&format!("~MDELG,{name}"), false, Duration::from_millis(100));
+    let _ = transport.send(&format!("~MDELG,{name}"), false, Duration::ZERO);
     transport
         .send(
             &format!("~EB,{name},{}", graphic.len()),
             false,
-            Duration::from_millis(50),
+            Duration::ZERO,
         )
         .map_err(|err| GodexExecutionError::new(format!("download {label} graphic: {err}")))?;
     transport
@@ -99,6 +99,7 @@ mod tests {
     #[derive(Default)]
     struct MockTransport {
         calls: Vec<String>,
+        pauses: Vec<Duration>,
         delete_errors: bool,
         fail_on: Option<String>,
     }
@@ -108,9 +109,10 @@ mod tests {
             &mut self,
             command: &str,
             read: bool,
-            _pause: Duration,
+            pause: Duration,
         ) -> Result<String, GodexExecutionError> {
             self.calls.push(format!("send:{command}:read={read}"));
+            self.pauses.push(pause);
             if self.delete_errors && command.starts_with("~MDELG,") {
                 return Err(GodexExecutionError::new("delete missing graphic"));
             }
@@ -182,6 +184,20 @@ mod tests {
         );
         assert_eq!(transport.calls[7], "send:~S,ESG:read=false");
         assert_eq!(transport.calls.last().unwrap(), "send:~S,STATUS:read=true");
+    }
+
+    #[test]
+    fn pack_render_does_not_add_blocking_command_pauses() {
+        let render = render();
+        let mut transport = MockTransport::default();
+
+        execute_pack_render(&mut transport, &render).unwrap();
+
+        let total_pause: Duration = transport.pauses.iter().copied().sum();
+        assert!(
+            total_pause <= Duration::from_millis(100),
+            "GoDEX print path adds {total_pause:?} of artificial pauses"
+        );
     }
 
     #[test]
