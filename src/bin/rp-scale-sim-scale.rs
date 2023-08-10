@@ -19,12 +19,11 @@ fn unix_main() -> Result<(), String> {
     use std::time::Duration;
 
     let cfg = SimConfig::from_args(std::env::args().skip(1))?;
-    let pty = open_pty()?;
+    let pty = open_simulator_pty()?;
     println!("device={}", pty.slave_name);
     io::stdout().flush().map_err(|err| err.to_string())?;
 
     let mut master = pty.master;
-    let _keep_slave_open = pty.slave;
     let mut sequencer = SampleSequencer::new(cfg.samples());
     let mut sent = 0_u64;
 
@@ -162,6 +161,23 @@ struct Pty {
     master: std::fs::File,
     slave: std::fs::File,
     slave_name: String,
+}
+
+#[cfg(unix)]
+struct SimulatorPty {
+    master: std::fs::File,
+    slave_name: String,
+}
+
+#[cfg(unix)]
+fn open_simulator_pty() -> Result<SimulatorPty, String> {
+    let Pty {
+        master,
+        slave,
+        slave_name,
+    } = open_pty()?;
+    drop(slave);
+    Ok(SimulatorPty { master, slave_name })
 }
 
 #[cfg(unix)]
@@ -337,4 +353,25 @@ fn parse_bool(value: &str) -> Result<bool, String> {
 #[cfg(unix)]
 fn usage() -> String {
     "usage: rp-scale-sim-scale [--scenario batch|idle|stress] [--weight N] [--stable true|false] [--unit kg] [--interval-ms N] [--count N]".to_string()
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::open_simulator_pty;
+
+    #[test]
+    fn simulator_pty_slave_is_available_for_scale_reader() {
+        let pty = open_simulator_pty().unwrap();
+        if let Err(err) = serialport::new(&pty.slave_name, 9600).open() {
+            let detail = err.to_string().to_ascii_lowercase();
+            assert!(
+                !detail.contains("resource busy"),
+                "simulator PTY must not be busy for scale reader: {err}"
+            );
+            std::fs::OpenOptions::new()
+                .read(true)
+                .open(&pty.slave_name)
+                .unwrap();
+        }
+    }
 }
