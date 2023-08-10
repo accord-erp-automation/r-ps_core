@@ -8,9 +8,10 @@ use rp_scale::print::PrinterKind;
 use rp_scale::scale::{SerialReader, SerialReaderConfig};
 use rp_scale::service::{
     DiscoveryRuntimeState, DiscoverySocketConfig, MobileHttpState, MobileServiceConfig,
-    MonitorRuntimeState, ServiceIdentity, bind_mobile_http_listener, bonjour_config,
-    collect_discovery_broadcast_targets, device_executor_from_env, parse_candidate_ports,
-    register_bonjour_service, serve_discovery, serve_mobile_http, simulated_executor_from_env,
+    MonitorRuntimeState, PrintExecutorMode, ServiceIdentity, bind_mobile_http_listener,
+    bonjour_config, collect_discovery_broadcast_targets, device_executor_from_env,
+    parse_candidate_ports, print_executor_mode_from_env, register_bonjour_service, serve_discovery,
+    serve_mobile_http, simulated_executor_from_env,
 };
 
 fn main() {
@@ -43,18 +44,26 @@ fn serve() -> std::io::Result<()> {
     start_scale_reader_from_env(monitor.clone());
     let mut http_state =
         MobileHttpState::from_config(&config, identity.clone(), active_printer, monitor);
-    if let Ok(mode) = env::var("RP_SCALE_PRINT_EXECUTOR")
-        && let Some(executor) = simulated_executor_from_env(&mode)
-    {
-        http_state = http_state.with_print_executor(Arc::new(executor));
-    } else if let Ok(mode) = env::var("RP_SCALE_PRINT_EXECUTOR")
-        && let Some(executor) = device_executor_from_env(
-            &mode,
-            env::var("RP_SCALE_ZEBRA_DEVICE").ok().as_deref(),
-            env::var("RP_SCALE_GODEX_DEVICE").ok().as_deref(),
-        )
-    {
-        http_state = http_state.with_print_executor(Arc::new(executor));
+    if let Ok(mode) = env::var("RP_SCALE_PRINT_EXECUTOR") {
+        match print_executor_mode_from_env(&mode)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?
+        {
+            Some(PrintExecutorMode::Simulated) => {
+                if let Some(executor) = simulated_executor_from_env(&mode) {
+                    http_state = http_state.with_print_executor(Arc::new(executor));
+                }
+            }
+            Some(PrintExecutorMode::Device) => {
+                if let Some(executor) = device_executor_from_env(
+                    &mode,
+                    env::var("RP_SCALE_ZEBRA_DEVICE").ok().as_deref(),
+                    env::var("RP_SCALE_GODEX_DEVICE").ok().as_deref(),
+                ) {
+                    http_state = http_state.with_print_executor(Arc::new(executor));
+                }
+            }
+            None => {}
+        }
     }
     let discovery_state = DiscoveryRuntimeState::from_config(&config, identity.clone());
     let _bonjour = match register_bonjour_service(&bonjour_config(

@@ -192,8 +192,8 @@ impl fmt::Display for DriverPrintExecutionError {
 impl std::error::Error for DriverPrintExecutionError {}
 
 pub fn simulated_executor_from_env(value: &str) -> Option<SimulatedDriverPrintExecutor> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "simulated" | "simulate" | "dry-run" | "dry_run" => Some(SimulatedDriverPrintExecutor),
+    match print_executor_mode_from_env(value).ok().flatten() {
+        Some(PrintExecutorMode::Simulated) => Some(SimulatedDriverPrintExecutor),
         _ => None,
     }
 }
@@ -203,12 +203,33 @@ pub fn device_executor_from_env(
     zebra_device: Option<&str>,
     godex_device: Option<&str>,
 ) -> Option<DeviceDriverPrintExecutor> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "real" | "device" | "hardware" => Some(DeviceDriverPrintExecutor::new(
+    match print_executor_mode_from_env(value).ok().flatten() {
+        Some(PrintExecutorMode::Device) => Some(DeviceDriverPrintExecutor::new(
             normalize_device_path(zebra_device),
             normalize_device_path(godex_device),
         )),
         _ => None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrintExecutorMode {
+    Simulated,
+    Device,
+}
+
+pub fn print_executor_mode_from_env(value: &str) -> Result<Option<PrintExecutorMode>, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    match value.to_ascii_lowercase().as_str() {
+        "simulated" | "simulate" | "dry-run" | "dry_run" => Ok(Some(PrintExecutorMode::Simulated)),
+        "real" | "device" | "hardware" | "godex-device" | "godex_device" | "zebra-device"
+        | "zebra_device" => Ok(Some(PrintExecutorMode::Device)),
+        _ => Err(format!(
+            "unsupported RP_SCALE_PRINT_EXECUTOR={value}; expected simulated, dry-run, device, godex-device, or zebra-device"
+        )),
     }
 }
 
@@ -291,6 +312,16 @@ mod tests {
     fn real_executor_env_requires_matching_device_path() {
         assert!(device_executor_from_env("real", Some("/tmp/zebra"), None).is_some());
         assert!(device_executor_from_env("device", None, Some("/tmp/godex")).is_some());
+        assert!(device_executor_from_env("godex-device", None, Some("/tmp/godex")).is_some());
+        assert!(device_executor_from_env("zebra-device", Some("/tmp/zebra"), None).is_some());
         assert!(device_executor_from_env("simulated", Some("/tmp/zebra"), None).is_none());
+    }
+
+    #[test]
+    fn executor_env_mode_rejects_unknown_values() {
+        let err = print_executor_mode_from_env("godex-printer").unwrap_err();
+
+        assert!(err.contains("unsupported RP_SCALE_PRINT_EXECUTOR"));
+        assert!(err.contains("godex-printer"));
     }
 }
