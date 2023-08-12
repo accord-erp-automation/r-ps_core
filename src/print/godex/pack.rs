@@ -2,9 +2,9 @@ use crate::core::PackLabelContent;
 
 use super::options::{LabelOptions, mm_dots};
 use super::qr::render_qr_graphic;
-use super::text_graphic::render_pack_text_graphic;
+use super::text::sanitize_label_text;
+use super::wrap::wrap_text_for_ezpl;
 
-const TEXT_GRAPHIC_NAME: &str = "TEXTLBL";
 const QR_GRAPHIC_NAME: &str = "QRLBL";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -24,10 +24,9 @@ pub fn build_pack_render(
 ) -> Result<GodexPackRender, String> {
     let options = options.normalized_pack();
     let layout = compute_pack_layout(&options);
-    let text_graphic_bmp = render_pack_text_graphic(content, &options);
     let qr_graphic_bmp = render_qr_graphic(&content.qr_payload, layout.qr_box_dots)?;
 
-    let commands = vec![
+    let mut commands = vec![
         "~S,ESG".to_string(),
         "^AD".to_string(),
         "^XSET,UNICODE,1".to_string(),
@@ -39,21 +38,23 @@ pub fn build_pack_render(
         "^H10".to_string(),
         "^P1".to_string(),
         "^L".to_string(),
-        format!("Y0,0,{TEXT_GRAPHIC_NAME}"),
+    ];
+    commands.extend(build_native_text_commands(content, &options, &layout));
+    commands.extend([
         format!(
             "BA,{},{},1,2,42,0,0,{}",
             layout.barcode_x, layout.barcode_y, content.epc
         ),
         format!("Y{},{},{}", layout.qr_x, layout.qr_y, QR_GRAPHIC_NAME),
         "E".to_string(),
-    ];
+    ]);
 
     Ok(GodexPackRender {
         commands,
         qr_payload: content.qr_payload.clone(),
-        text_graphic_bmp,
+        text_graphic_bmp: Vec::new(),
         qr_graphic_bmp,
-        text_graphic_name: TEXT_GRAPHIC_NAME.to_string(),
+        text_graphic_name: String::new(),
         qr_graphic_name: QR_GRAPHIC_NAME.to_string(),
         qr_box_dots: layout.qr_box_dots,
     })
@@ -66,6 +67,51 @@ struct PackLayout {
     barcode_x: i32,
     barcode_y: i32,
     qr_box_dots: i32,
+}
+
+fn build_native_text_commands(
+    content: &PackLabelContent,
+    options: &LabelOptions,
+    layout: &PackLayout,
+) -> Vec<String> {
+    let safe_margin = mm_dots(options.safe_margin_mm, options.dpi);
+    let line_step = mm_dots(5.0, options.dpi);
+    let left_x = 0.max(safe_margin - mm_dots(2.0, options.dpi));
+    let text_right_gap = mm_dots(3.0, options.dpi);
+    let text_width = 1.max(layout.qr_x - left_x - text_right_gap);
+    let company_y = safe_margin + line_step;
+    let item_y = company_y + line_step;
+    let qty_y = mm_dots(33.0, options.dpi);
+
+    let mut commands = Vec::new();
+    commands.push(native_text(left_x, 0, &format!("EPC: {}", content.epc)));
+    commands.push(native_text(
+        left_x,
+        company_y,
+        &format!("COMPANY: {}", content.company_name),
+    ));
+
+    let product = format!("MAHSULOT NOMI: {}", content.product_name);
+    let product_lines = wrap_text_for_ezpl(&product, text_width, 1, 8, 8);
+    for (idx, line) in product_lines.iter().take(4).enumerate() {
+        commands.push(native_text(left_x, item_y + idx as i32 * line_step, line));
+    }
+
+    commands.push(native_text(
+        left_x,
+        qty_y,
+        &format!("NETTO: {} KG", content.kg_text),
+    ));
+    commands.push(native_text(
+        left_x,
+        qty_y + line_step,
+        &format!("BRUTTO: {} KG", content.brutto_text),
+    ));
+    commands
+}
+
+fn native_text(x: i32, y: i32, value: &str) -> String {
+    format!("AC,{x},{y},1,1,0,0,{}", sanitize_label_text(value))
 }
 
 fn compute_pack_layout(options: &LabelOptions) -> PackLayout {
@@ -128,6 +174,21 @@ mod tests {
     fn builds_pack_commands_like_gscale_godex_layout() {
         let render = build_pack_render(&content(), LabelOptions::default_pack()).unwrap();
 
+        assert!(
+            !render
+                .commands
+                .iter()
+                .any(|command| command.contains("TEXTLBL")),
+            "GoDEX pack text must use native printer text commands, not bitmap text graphics"
+        );
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command.starts_with("AC,") && command.contains("EPC:")),
+            "GoDEX pack render should print readable compact native text"
+        );
+
         assert_eq!(
             render.commands,
             vec![
@@ -142,7 +203,12 @@ mod tests {
                 "^H10",
                 "^P1",
                 "^L",
-                "Y0,0,TEXTLBL",
+                "AC,16,0,1,1,0,0,EPC: 3034257BF7194E406994036B",
+                "AC,16,72,1,1,0,0,COMPANY: ACCORD LLC",
+                "AC,16,112,1,1,0,0,MAHSULOT NOMI: GREEN",
+                "AC,16,152,1,1,0,0,TEA",
+                "AC,16,264,1,1,0,0,NETTO: 1.3 KG",
+                "AC,16,304,1,1,0,0,BRUTTO: 1.3 KG",
                 "BA,0,24,1,2,42,0,0,3034257BF7194E406994036B",
                 "Y224,224,QRLBL",
                 "E",
@@ -153,7 +219,7 @@ mod tests {
             "https://scan.wspace.sbs/L/ACCORD+LLC/GREEN+TEA/1.3/1.3/3034257BF7194E406994036B"
         );
         assert_eq!(render.qr_box_dots, 144);
-        assert_eq!(&render.text_graphic_bmp[0..2], b"BM");
+        assert!(render.text_graphic_bmp.is_empty());
         assert_eq!(&render.qr_graphic_bmp[0..2], b"BM");
     }
 
@@ -172,10 +238,19 @@ mod tests {
         assert_eq!(render.commands[6], "^Q40,2");
         assert_eq!(render.commands[7], "^W60");
         assert_eq!(
-            render.commands[12],
+            render
+                .commands
+                .iter()
+                .find(|command| command.starts_with("BA,"))
+                .unwrap(),
             "BA,8,24,1,2,42,0,0,3034257BF7194E406994036B"
         );
-        assert_eq!(render.commands[13], "Y320,136,QRLBL");
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command == "Y320,136,QRLBL")
+        );
         assert_eq!(render.qr_box_dots, 128);
     }
 }

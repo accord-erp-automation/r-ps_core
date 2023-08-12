@@ -75,6 +75,9 @@ fn download_graphic<T: GodexTransport>(
     graphic: &[u8],
     label: &str,
 ) -> Result<(), GodexExecutionError> {
+    if name.is_empty() || graphic.is_empty() {
+        return Ok(());
+    }
     let _ = transport.send(&format!("~MDELG,{name}"), false, Duration::ZERO);
     transport
         .send(
@@ -161,28 +164,17 @@ mod tests {
 
         assert_eq!(status, "00,OK");
         assert_eq!(transport.calls[0], "send:^XSET,BUZZER,0:read=false");
-        assert_eq!(transport.calls[1], "send:~MDELG,TEXTLBL:read=false");
+        assert!(!transport.calls.iter().any(|call| call.contains("TEXTLBL")));
+        assert_eq!(transport.calls[1], "send:~MDELG,QRLBL:read=false");
         assert_eq!(
             transport.calls[2],
-            format!(
-                "send:~EB,TEXTLBL,{}:read=false",
-                render.text_graphic_bmp.len()
-            )
-        );
-        assert_eq!(
-            transport.calls[3],
-            format!("raw:{}", render.text_graphic_bmp.len())
-        );
-        assert_eq!(transport.calls[4], "send:~MDELG,QRLBL:read=false");
-        assert_eq!(
-            transport.calls[5],
             format!("send:~EB,QRLBL,{}:read=false", render.qr_graphic_bmp.len())
         );
         assert_eq!(
-            transport.calls[6],
+            transport.calls[3],
             format!("raw:{}", render.qr_graphic_bmp.len())
         );
-        assert_eq!(transport.calls[7], "send:~S,ESG:read=false");
+        assert_eq!(transport.calls[4], "send:~S,ESG:read=false");
         assert_eq!(transport.calls.last().unwrap(), "send:~S,STATUS:read=true");
     }
 

@@ -151,12 +151,30 @@ mod tests {
             panic!("expected godex pack render");
         };
 
-        assert_eq!(render.commands[11], "Y0,0,TEXTLBL");
         assert_eq!(
-            render.commands[12],
+            render.commands[11],
+            "AC,16,0,1,1,0,0,EPC: 3034257BF7194E406994036B"
+        );
+        assert!(
+            !render
+                .commands
+                .iter()
+                .any(|command| command.contains("TEXTLBL"))
+        );
+        assert_eq!(
+            render
+                .commands
+                .iter()
+                .find(|command| command.starts_with("BA,"))
+                .unwrap(),
             "BA,0,24,1,2,42,0,0,3034257BF7194E406994036B"
         );
-        assert_eq!(render.commands[13], "Y224,224,QRLBL");
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command == "Y224,224,QRLBL")
+        );
         assert_eq!(
             render.qr_payload,
             "https://scan.wspace.sbs/L/ACCORD/GREEN+TEA/1.7/2.5/3034257BF7194E406994036B"
