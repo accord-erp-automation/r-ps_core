@@ -54,6 +54,26 @@ pub fn render_pack_text_graphic(content: &PackLabelContent, options: &LabelOptio
     encode_mono_bmp(&canvas.crop_ink())
 }
 
+pub fn render_pack_epc_graphic(content: &PackLabelContent, options: &LabelOptions) -> Vec<u8> {
+    let options = options.clone().normalized_pack();
+    let label_width = mm_dots(f64::from(options.label_width_mm), options.dpi).max(1) as usize;
+    let label_length = mm_dots(f64::from(options.label_length_mm), options.dpi).max(1) as usize;
+    let safe_margin = mm_dots(options.safe_margin_mm, options.dpi);
+    let line_step = mm_dots(5.0, options.dpi);
+    let left_x = 0.max(safe_margin - mm_dots(2.0, options.dpi));
+    let epc_y = 0.max(safe_margin - line_step * 5);
+
+    let mut canvas = MonoBitmap::filled(label_width, label_length, true);
+    draw_text(
+        &mut canvas,
+        left_x,
+        epc_y,
+        2,
+        &format!("EPC: {}", content.epc),
+    );
+    encode_mono_bmp(&canvas.crop_ink())
+}
+
 fn draw_wrapped_product(canvas: &mut MonoBitmap, x: i32, y: i32, product_name: &str) {
     let prefix = "MAHSULOT NOMI:";
     let mut line = format!("{prefix} {product_name}");
@@ -181,6 +201,15 @@ mod tests {
     #[test]
     fn renders_pack_text_graphic_as_bmp() {
         let bmp = render_pack_text_graphic(&content(), &LabelOptions::default_pack());
+
+        assert_eq!(&bmp[0..2], b"BM");
+        assert!(bmp.len() > 62);
+        assert!(bmp[62..].iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn renders_pack_epc_graphic_as_bmp() {
+        let bmp = render_pack_epc_graphic(&content(), &LabelOptions::default_pack());
 
         assert_eq!(&bmp[0..2], b"BM");
         assert!(bmp.len() > 62);

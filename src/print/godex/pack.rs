@@ -3,8 +3,10 @@ use crate::core::PackLabelContent;
 use super::options::{LabelOptions, mm_dots};
 use super::qr::render_qr_graphic;
 use super::text::sanitize_label_text;
+use super::text_graphic::render_pack_epc_graphic;
 use super::wrap::wrap_text_for_ezpl;
 
+const TEXT_GRAPHIC_NAME: &str = "TEXTLBL";
 const QR_GRAPHIC_NAME: &str = "QRLBL";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -24,6 +26,7 @@ pub fn build_pack_render(
 ) -> Result<GodexPackRender, String> {
     let options = options.normalized_pack();
     let layout = compute_pack_layout(&options);
+    let text_graphic_bmp = render_pack_epc_graphic(content, &options);
     let qr_graphic_bmp = render_qr_graphic(&content.qr_payload, layout.qr_box_dots)?;
 
     let mut commands = vec![
@@ -39,6 +42,7 @@ pub fn build_pack_render(
         "^P1".to_string(),
         "^L".to_string(),
     ];
+    commands.push(format!("Y0,0,{TEXT_GRAPHIC_NAME}"));
     commands.extend(build_native_text_commands(content, &options, &layout));
     commands.extend([
         format!(
@@ -52,9 +56,9 @@ pub fn build_pack_render(
     Ok(GodexPackRender {
         commands,
         qr_payload: content.qr_payload.clone(),
-        text_graphic_bmp: Vec::new(),
+        text_graphic_bmp,
         qr_graphic_bmp,
-        text_graphic_name: String::new(),
+        text_graphic_name: TEXT_GRAPHIC_NAME.to_string(),
         qr_graphic_name: QR_GRAPHIC_NAME.to_string(),
         qr_box_dots: layout.qr_box_dots,
     })
@@ -84,7 +88,6 @@ fn build_native_text_commands(
     let qty_y = mm_dots(33.0, options.dpi);
 
     let mut commands = Vec::new();
-    commands.push(native_text(left_x, 0, &format!("EPC: {}", content.epc)));
     commands.push(native_text(
         left_x,
         company_y,
@@ -111,7 +114,7 @@ fn build_native_text_commands(
 }
 
 fn native_text(x: i32, y: i32, value: &str) -> String {
-    format!("AC,{x},{y},1,1,0,0,{}", sanitize_label_text(value))
+    format!("AB,{x},{y},1,1,0,0,{}", sanitize_label_text(value))
 }
 
 fn compute_pack_layout(options: &LabelOptions) -> PackLayout {
@@ -175,17 +178,23 @@ mod tests {
         let render = build_pack_render(&content(), LabelOptions::default_pack()).unwrap();
 
         assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command == "Y0,0,TEXTLBL")
+        );
+        assert!(
             !render
                 .commands
                 .iter()
-                .any(|command| command.contains("TEXTLBL")),
-            "GoDEX pack text must use native printer text commands, not bitmap text graphics"
+                .any(|command| command.starts_with("AC,") && command.contains("EPC:")),
+            "EPC text must stay on the old bitmap graphic path"
         );
         assert!(
             render
                 .commands
                 .iter()
-                .any(|command| command.starts_with("AC,") && command.contains("EPC:")),
+                .any(|command| command.starts_with("AB,") && command.contains("NETTO:")),
             "GoDEX pack render should print readable compact native text"
         );
 
@@ -203,12 +212,12 @@ mod tests {
                 "^H10",
                 "^P1",
                 "^L",
-                "AC,16,0,1,1,0,0,EPC: 3034257BF7194E406994036B",
-                "AC,16,72,1,1,0,0,COMPANY: ACCORD LLC",
-                "AC,16,112,1,1,0,0,MAHSULOT NOMI: GREEN",
-                "AC,16,152,1,1,0,0,TEA",
-                "AC,16,264,1,1,0,0,NETTO: 1.3 KG",
-                "AC,16,304,1,1,0,0,BRUTTO: 1.3 KG",
+                "Y0,0,TEXTLBL",
+                "AB,16,72,1,1,0,0,COMPANY: ACCORD LLC",
+                "AB,16,112,1,1,0,0,MAHSULOT NOMI: GREEN",
+                "AB,16,152,1,1,0,0,TEA",
+                "AB,16,264,1,1,0,0,NETTO: 1.3 KG",
+                "AB,16,304,1,1,0,0,BRUTTO: 1.3 KG",
                 "BA,0,24,1,2,42,0,0,3034257BF7194E406994036B",
                 "Y224,224,QRLBL",
                 "E",
@@ -219,7 +228,7 @@ mod tests {
             "https://scan.wspace.sbs/L/ACCORD+LLC/GREEN+TEA/1.3/1.3/3034257BF7194E406994036B"
         );
         assert_eq!(render.qr_box_dots, 144);
-        assert!(render.text_graphic_bmp.is_empty());
+        assert_eq!(&render.text_graphic_bmp[0..2], b"BM");
         assert_eq!(&render.qr_graphic_bmp[0..2], b"BM");
     }
 

@@ -116,15 +116,12 @@ mod tests {
             render.qr_payload,
             "https://scan.wspace.sbs/L/ACCORD/GREEN+TEA/1.7/2.5/3034257BF7194E406994036B"
         );
-        assert_eq!(
-            render.commands[11],
-            "AC,16,0,1,1,0,0,EPC: 3034257BF7194E406994036B"
-        );
+        assert_eq!(render.commands[11], "Y0,0,TEXTLBL");
         assert!(
             !render
                 .commands
                 .iter()
-                .any(|command| command.contains("TEXTLBL"))
+                .any(|command| command.starts_with("AB,") && command.contains("EPC:"))
         );
         assert!(
             render
