@@ -222,21 +222,71 @@ pub fn handle_mobile_http_request_with_body(
 }
 
 fn driver_print_response(state: &MobileHttpState, body: &str) -> MobileHttpResponse {
-    let job = match DriverPrintRequest::from_json(body)
-        .and_then(|request| request.into_job(state.active_printer))
-    {
-        Ok(job) => job,
+    let request = match DriverPrintRequest::from_json(body) {
+        Ok(request) => request,
         Err(err) => {
+            eprintln!("rp-scale driver print rejected: error={}", err.code());
             return MobileHttpResponse::json(
                 err.status(),
                 &DriverPrintErrorResponse::new(err.code(), err.code()),
             );
         }
     };
+    println!(
+        "rp-scale driver print request: epc={:?} item_code={:?} item_name={:?} warehouse={:?} printer={:?} print_mode={:?} mode={:?} gross_qty={:?} qty={:?} manual_qty_kg={:?} unit={:?} tare_enabled={} tare={} tare_kg={:.3}",
+        request.epc,
+        request.item_code,
+        request.item_name,
+        request.warehouse,
+        request.printer,
+        request.print_mode,
+        request.mode,
+        request.gross_qty,
+        request.qty,
+        request.manual_qty_kg,
+        request.unit,
+        request.tare_enabled,
+        request.tare,
+        request.tare_kg
+    );
+
+    let job = match request.into_job(state.active_printer) {
+        Ok(job) => job,
+        Err(err) => {
+            eprintln!(
+                "rp-scale driver print rejected: error={} active_printer={}",
+                err.code(),
+                state.active_printer.as_str()
+            );
+            return MobileHttpResponse::json(
+                err.status(),
+                &DriverPrintErrorResponse::new(err.code(), err.code()),
+            );
+        }
+    };
+    println!(
+        "rp-scale driver print accepted: epc={} item_code={:?} item_name={:?} warehouse={:?} printer={} mode={} gross_qty={:.3} net_qty={:.3} unit={}",
+        job.epc,
+        job.selection.item_code,
+        job.selection.item_name,
+        job.warehouse,
+        job.selection.printer,
+        job.selection.print_mode.as_str(),
+        job.reading.weight.unwrap_or(0.0),
+        job.reading.weight.unwrap_or(0.0),
+        job.reading.unit
+    );
 
     let prepared = match prepare_print_command(&job.reading, job.selection.clone(), &job.epc) {
         Ok(prepared) => prepared,
         Err(err) => {
+            eprintln!(
+                "rp-scale driver print prepare failed: epc={} item_code={:?} qty={:.3} error={}",
+                job.epc,
+                job.selection.item_code,
+                job.reading.weight.unwrap_or(0.0),
+                err
+            );
             return MobileHttpResponse::json(
                 422,
                 &DriverPrintErrorResponse::new("print_prepare_failed", err.to_string()),
@@ -252,19 +302,49 @@ fn driver_print_response(state: &MobileHttpState, body: &str) -> MobileHttpRespo
     ) {
         Ok(guard) => guard,
         Err(snapshot) => {
+            eprintln!(
+                "rp-scale driver print busy: epc={} item_code={:?} qty={:.3}",
+                job.epc,
+                job.selection.item_code,
+                job.reading.weight.unwrap_or(0.0)
+            );
             return MobileHttpResponse::json(409, &DriverPrintErrorResponse::busy(snapshot));
         }
     };
 
     match state.print_executor.execute(&prepared) {
-        Ok(result) => MobileHttpResponse::json(
-            200,
-            &DriverPrintResponse::done(&job, &prepared, result.status),
-        ),
-        Err(err) => MobileHttpResponse::json(
-            err.status(),
-            &DriverPrintErrorResponse::new(err.code(), err.detail()),
-        ),
+        Ok(result) => {
+            println!(
+                "rp-scale driver print done: epc={} item_code={:?} item_name={:?} warehouse={:?} printer={} mode={} gross_qty={:.3} net_qty={:.3} status={}",
+                job.epc,
+                job.selection.item_code,
+                job.selection.item_name,
+                job.warehouse,
+                prepared.plan.printer.as_str(),
+                prepared.plan.job.mode.as_str(),
+                prepared.plan.job.gross_qty,
+                prepared.plan.job.net_qty,
+                result.status
+            );
+            MobileHttpResponse::json(
+                200,
+                &DriverPrintResponse::done(&job, &prepared, result.status),
+            )
+        }
+        Err(err) => {
+            eprintln!(
+                "rp-scale driver print execution failed: epc={} item_code={:?} qty={:.3} error={} detail={}",
+                job.epc,
+                job.selection.item_code,
+                job.reading.weight.unwrap_or(0.0),
+                err.code(),
+                err.detail()
+            );
+            MobileHttpResponse::json(
+                err.status(),
+                &DriverPrintErrorResponse::new(err.code(), err.detail()),
+            )
+        }
     }
 }
 
