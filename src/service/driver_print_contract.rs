@@ -4,6 +4,7 @@ use crate::core::{PrintSelection, QuantitySource};
 use crate::print::{PrintMode, PrinterKind};
 use crate::runtime::PrintPipelineResult;
 use crate::scale::Reading;
+use crate::service::print_activity::PrintActivitySnapshot;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct DriverPrintRequest {
@@ -186,6 +187,8 @@ pub struct DriverPrintErrorResponse {
     pub ok: bool,
     pub error: &'static str,
     pub detail: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub print_activity: Option<PrintActivitySnapshot>,
 }
 
 impl DriverPrintErrorResponse {
@@ -194,6 +197,17 @@ impl DriverPrintErrorResponse {
             ok: false,
             error,
             detail: detail.into(),
+            print_activity: None,
+        }
+    }
+
+    pub fn busy(print_activity: PrintActivitySnapshot) -> Self {
+        Self {
+            ok: false,
+            error: "driver_busy",
+            detail: "Printer server band. Boshqa mobile print yakunlagandan keyin qayta urining."
+                .to_string(),
+            print_activity: Some(print_activity),
         }
     }
 }

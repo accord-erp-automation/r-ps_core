@@ -14,6 +14,7 @@ use super::mobile_contract::{
 };
 use super::monitor_contract::BatchStateResponse;
 use super::monitor_runtime::MonitorRuntimeState;
+use super::print_activity::PrintActivityState;
 use crate::print::capabilities::manifest_for;
 use crate::print::printer::PrinterKind;
 use crate::runtime::prepare_print_command;
@@ -26,6 +27,7 @@ pub struct MobileHttpState {
     pub active_printer: PrinterKind,
     pub monitor: MonitorRuntimeState,
     pub print_executor: Arc<dyn DriverPrintExecutor>,
+    pub print_activity: PrintActivityState,
 }
 
 impl MobileHttpState {
@@ -43,6 +45,7 @@ impl MobileHttpState {
             active_printer,
             monitor,
             print_executor: Arc::new(UnconfiguredDriverPrintExecutor),
+            print_activity: PrintActivityState::default(),
         }
     }
 
@@ -122,12 +125,15 @@ pub fn handle_mobile_http_request_with_body(
     let path = normalize_path(path);
 
     match (method.as_str(), path.as_str()) {
-        ("GET", "/healthz") => MobileHttpResponse::json(200, &HealthResponse::ok()),
+        ("GET", "/healthz") => {
+            MobileHttpResponse::json(200, &HealthResponse::ok(state.print_activity.snapshot()))
+        }
         ("GET", "/v1/mobile/handshake") => {
             let handshake = HandshakeResponse::new(
                 &state.identity,
                 state.http_port,
                 state.candidate_ports.clone(),
+                state.print_activity.snapshot(),
             );
             MobileHttpResponse::json(200, &handshake)
         }
@@ -235,6 +241,18 @@ fn driver_print_response(state: &MobileHttpState, body: &str) -> MobileHttpRespo
                 422,
                 &DriverPrintErrorResponse::new("print_prepare_failed", err.to_string()),
             );
+        }
+    };
+
+    let _activity_guard = match state.print_activity.try_start(
+        &job.epc,
+        &job.selection.item_code,
+        &job.selection.item_name,
+        job.selection.printer.as_str(),
+    ) {
+        Ok(guard) => guard,
+        Err(snapshot) => {
+            return MobileHttpResponse::json(409, &DriverPrintErrorResponse::busy(snapshot));
         }
     };
 

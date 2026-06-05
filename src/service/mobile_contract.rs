@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use super::config::{DEFAULT_DISCOVERY_PORT, DEFAULT_MOBILE_API_PORTS, default_mobile_api_port};
+use super::print_activity::PrintActivitySnapshot;
 use crate::print::capabilities::ActivePrinterManifest;
 
 pub const APP_ID: &str = "gscale-zebra";
@@ -29,13 +30,17 @@ impl ServiceIdentity {
 pub struct HealthResponse {
     pub ok: bool,
     pub service: &'static str,
+    pub busy: bool,
+    pub print_activity: PrintActivitySnapshot,
 }
 
 impl HealthResponse {
-    pub fn ok() -> Self {
+    pub fn ok(print_activity: PrintActivitySnapshot) -> Self {
         Self {
             ok: true,
             service: SERVICE_ID,
+            busy: print_activity.busy,
+            print_activity,
         }
     }
 }
@@ -58,10 +63,17 @@ pub struct HandshakeResponse {
     pub items_path: &'static str,
     pub batch_state_path: &'static str,
     pub requires_auth: bool,
+    pub busy: bool,
+    pub print_activity: PrintActivitySnapshot,
 }
 
 impl HandshakeResponse {
-    pub fn new(identity: &ServiceIdentity, http_port: u16, candidate_ports: Vec<u16>) -> Self {
+    pub fn new(
+        identity: &ServiceIdentity,
+        http_port: u16,
+        candidate_ports: Vec<u16>,
+        print_activity: PrintActivitySnapshot,
+    ) -> Self {
         Self {
             ok: true,
             service: SERVICE_ID,
@@ -79,6 +91,8 @@ impl HandshakeResponse {
             items_path: "/v1/mobile/items",
             batch_state_path: "/v1/mobile/batch/state",
             requires_auth: false,
+            busy: print_activity.busy,
+            print_activity,
         }
     }
 }
@@ -294,7 +308,12 @@ mod tests {
 
     #[test]
     fn builds_gscale_compatible_handshake_shape() {
-        let handshake = HandshakeResponse::new(&identity(), 39117, vec![39117, 41257]);
+        let handshake = HandshakeResponse::new(
+            &identity(),
+            39117,
+            vec![39117, 41257],
+            PrintActivitySnapshot::idle(),
+        );
 
         assert!(handshake.ok);
         assert_eq!(handshake.service, "mobileapi");
@@ -303,6 +322,7 @@ mod tests {
         assert_eq!(handshake.discovery_port, 18081);
         assert_eq!(handshake.monitor_path, "/v1/mobile/monitor/state");
         assert!(!handshake.requires_auth);
+        assert!(!handshake.busy);
     }
 
     #[test]
@@ -319,7 +339,10 @@ mod tests {
 
     #[test]
     fn health_response_matches_mobile_fallback_probe() {
-        assert_eq!(HealthResponse::ok().service, "mobileapi");
+        let health = HealthResponse::ok(PrintActivitySnapshot::idle());
+
+        assert_eq!(health.service, "mobileapi");
+        assert!(!health.busy);
     }
 
     #[test]

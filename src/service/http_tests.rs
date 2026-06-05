@@ -58,6 +58,22 @@ impl DriverPrintExecutor for FailingDriverPrintExecutor {
     }
 }
 
+#[derive(Debug)]
+struct HoldingDriverPrintExecutor;
+
+impl DriverPrintExecutor for HoldingDriverPrintExecutor {
+    fn execute(
+        &self,
+        _prepared: &PrintPipelineResult,
+    ) -> Result<PrintExecutionResult, DriverPrintExecutionError> {
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        Ok(PrintExecutionResult {
+            printer: PrinterKind::Godex,
+            status: "OK".to_string(),
+        })
+    }
+}
+
 #[test]
 fn healthz_matches_gscale_mobile_fallback_contract() {
     let response = handle_mobile_http_request(&state(PrinterKind::Zebra), "GET", "/healthz");
@@ -67,6 +83,8 @@ fn healthz_matches_gscale_mobile_fallback_contract() {
     assert_eq!(response.content_type, "application/json");
     assert_eq!(body["ok"], true);
     assert_eq!(body["service"], "mobileapi");
+    assert_eq!(body["busy"], false);
+    assert_eq!(body["print_activity"]["busy"], false);
 }
 
 #[test]
@@ -84,6 +102,8 @@ fn handshake_matches_mobile_discovery_contract() {
     assert_eq!(body["discovery_port"], 18081);
     assert_eq!(body["candidate_ports"][1], 41257);
     assert_eq!(body["requires_auth"], false);
+    assert_eq!(body["busy"], false);
+    assert_eq!(body["print_activity"]["busy"], false);
 }
 
 #[test]
@@ -232,6 +252,65 @@ fn driver_print_executes_rs_owned_request_and_returns_done_response() {
     assert_eq!(body["qty"], 1.72);
     assert_eq!(body["gross_qty"], 2.5);
     assert_eq!(body["printer_status"], "OK");
+}
+
+#[test]
+fn driver_print_reports_busy_state_and_rejects_parallel_mobile_print() {
+    let state = state_with_executor(PrinterKind::Godex, HoldingDriverPrintExecutor);
+    let busy_state = state.clone();
+    let first = std::thread::spawn(move || {
+        handle_mobile_http_request_with_body(
+            &busy_state,
+            "POST",
+            "/v1/driver/print",
+            &format!(
+                r#"{{
+                    "epc":"{EPC}",
+                    "item_code":"ITEM-1",
+                    "item_name":"Green Tea",
+                    "warehouse":"Stores - A",
+                    "printer":"godex",
+                    "gross_qty":2.5
+                }}"#
+            ),
+        )
+    });
+    std::thread::sleep(std::time::Duration::from_millis(25));
+
+    let health = json(handle_mobile_http_request(&state, "GET", "/healthz"));
+    let handshake = json(handle_mobile_http_request(
+        &state,
+        "GET",
+        "/v1/mobile/handshake",
+    ));
+    let second = handle_mobile_http_request_with_body(
+        &state,
+        "POST",
+        "/v1/mobile/driver/print",
+        &format!(
+            r#"{{
+                "epc":"{EPC}",
+                "item_code":"ITEM-2",
+                "item_name":"Black Tea",
+                "warehouse":"Stores - A",
+                "printer":"godex",
+                "gross_qty":1.0
+            }}"#
+        ),
+    );
+    let second_body = json(second.clone());
+    let first_response = first.join().unwrap();
+    let idle_health = json(handle_mobile_http_request(&state, "GET", "/healthz"));
+
+    assert_eq!(health["busy"], true);
+    assert_eq!(health["print_activity"]["status"], "printing");
+    assert_eq!(health["print_activity"]["item_code"], "ITEM-1");
+    assert_eq!(handshake["busy"], true);
+    assert_eq!(second.status, 409);
+    assert_eq!(second_body["error"], "driver_busy");
+    assert_eq!(second_body["print_activity"]["busy"], true);
+    assert_eq!(first_response.status, 200);
+    assert_eq!(idle_health["busy"], false);
 }
 
 #[test]
