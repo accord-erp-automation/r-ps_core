@@ -308,6 +308,8 @@ Configuration is read from environment variables at process start.
 | `RP_SCALE_PRINT_EXECUTOR` | unset | `simulated`, `dry-run`, `device`, `hardware`, `godex-device`, or `zebra-device`. |
 | `RP_SCALE_ZEBRA_DEVICE` | unset | Local Zebra device path when device executor is enabled. |
 | `RP_SCALE_GODEX_DEVICE` | unset | Local GoDEX device path when device executor is enabled. |
+| `RP_SCALE_ZEBRA_SERIAL` | unset | USB printer serial used to resolve `/dev/usb/lp*` after reboot. Takes priority over `RP_SCALE_ZEBRA_DEVICE`. |
+| `RP_SCALE_GODEX_SERIAL` | unset | USB printer serial used to resolve `/dev/usb/lp*` after reboot. Takes priority over `RP_SCALE_GODEX_DEVICE`. |
 | `RP_SCALE_SCALE_DEVICE` | unset | Serial scale device path. If absent, scale reader is not started. |
 | `RP_SCALE_SCALE_BAUD` | `9600` | Serial scale baud rate. |
 | `RP_SCALE_SCALE_UNIT` | `kg` | Fallback unit for scale frames without unit text. |
@@ -330,6 +332,7 @@ RP_SCALE_MOBILE_API_ADDR=0.0.0.0:39117
 RP_SCALE_PRINTER=godex
 RP_SCALE_PRINT_EXECUTOR=device
 RP_SCALE_GODEX_DEVICE=/dev/usb/lp0
+RP_SCALE_GODEX_SERIAL=255109E1
 RP_SCALE_SCALE_DEVICE=/dev/ttyUSB0
 RP_SCALE_SCALE_BAUD=9600
 RP_SCALE_SCALE_UNIT=kg

@@ -10,8 +10,9 @@ use rp_scale::service::{
     DiscoveryRuntimeState, DiscoverySocketConfig, MobileHttpState, MobileServiceConfig,
     MonitorRuntimeState, PrintExecutorMode, ServiceIdentity, bind_mobile_http_listener,
     bonjour_config, collect_discovery_broadcast_targets, device_executor_from_env,
-    parse_candidate_ports, print_executor_mode_from_env, register_bonjour_service, serve_discovery,
-    serve_mobile_http, simulated_executor_from_env,
+    parse_candidate_ports, print_executor_mode_from_env, register_bonjour_service,
+    resolve_usblp_device_by_serial, serve_discovery, serve_mobile_http,
+    simulated_executor_from_env,
 };
 
 fn main() {
@@ -37,10 +38,10 @@ fn serve() -> std::io::Result<()> {
     let server_ref =
         env::var("RP_SCALE_SERVER_REF").unwrap_or_else(|_| config.default_server_ref());
     let identity = ServiceIdentity::new(&config.server_name, &server_ref, "RP Scale", "operator");
-    let monitor = MonitorRuntimeState::with_printer_devices(
-        env::var("RP_SCALE_ZEBRA_DEVICE").ok(),
-        env::var("RP_SCALE_GODEX_DEVICE").ok(),
-    );
+    let zebra_device = printer_device_from_env("RP_SCALE_ZEBRA_DEVICE", "RP_SCALE_ZEBRA_SERIAL");
+    let godex_device = printer_device_from_env("RP_SCALE_GODEX_DEVICE", "RP_SCALE_GODEX_SERIAL");
+    let monitor =
+        MonitorRuntimeState::with_printer_devices(zebra_device.clone(), godex_device.clone());
     start_scale_reader_from_env(monitor.clone());
     let mut http_state =
         MobileHttpState::from_config(&config, identity.clone(), active_printer, monitor);
@@ -56,8 +57,8 @@ fn serve() -> std::io::Result<()> {
             Some(PrintExecutorMode::Device) => {
                 if let Some(executor) = device_executor_from_env(
                     &mode,
-                    env::var("RP_SCALE_ZEBRA_DEVICE").ok().as_deref(),
-                    env::var("RP_SCALE_GODEX_DEVICE").ok().as_deref(),
+                    zebra_device.as_deref(),
+                    godex_device.as_deref(),
                 ) {
                     http_state = http_state.with_print_executor(Arc::new(executor));
                 }
@@ -101,6 +102,21 @@ fn active_printer_from_env() -> PrinterKind {
         .ok()
         .and_then(|value| PrinterKind::normalize_request(&value))
         .unwrap_or(PrinterKind::Zebra)
+}
+
+fn printer_device_from_env(device_var: &str, serial_var: &str) -> Option<String> {
+    let serial = env::var(serial_var).unwrap_or_default();
+    if !serial.trim().is_empty() {
+        let resolved = resolve_usblp_device_by_serial(&serial);
+        if resolved.is_none() {
+            eprintln!("{serial_var}={serial} did not match any GoDEX usblp device");
+        }
+        return resolved.map(|path| path.to_string_lossy().to_string());
+    }
+    env::var(device_var)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn mobile_service_config_from_env(

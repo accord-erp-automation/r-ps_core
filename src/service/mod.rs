@@ -10,6 +10,7 @@ pub mod mobile_contract;
 pub mod monitor_contract;
 pub mod monitor_runtime;
 pub mod print_activity;
+pub mod printer_device;
 
 pub use bonjour::{
     BONJOUR_SERVICE_TYPE, BonjourError, BonjourService, BonjourServiceConfig, bonjour_config,
@@ -49,3 +50,4 @@ pub use mobile_contract::{
 pub use monitor_contract::{BatchStateResponse, MonitorResponse, MonitorState};
 pub use monitor_runtime::MonitorRuntimeState;
 pub use print_activity::{PrintActivitySnapshot, PrintActivityState};
+pub use printer_device::resolve_usblp_device_by_serial;
