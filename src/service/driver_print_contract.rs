@@ -36,6 +36,8 @@ pub struct DriverPrintRequest {
     pub tare: bool,
     #[serde(default)]
     pub tare_kg: f64,
+    #[serde(default)]
+    pub print_count: u32,
 }
 
 impl DriverPrintRequest {
@@ -75,6 +77,7 @@ impl DriverPrintRequest {
         let unit = normalize_unit(&self.unit);
         let tare_enabled = self.tare_enabled || self.tare || self.tare_kg > 0.0;
         let item_name = fallback_item_name(&self.item_name, &item_code);
+        let print_count = normalize_print_count(self.print_count);
 
         let selection = PrintSelection {
             item_code,
@@ -99,6 +102,7 @@ impl DriverPrintRequest {
             warehouse: selection.warehouse.clone(),
             reading,
             selection,
+            print_count,
         })
     }
 }
@@ -109,6 +113,11 @@ pub struct DriverPrintJob {
     pub warehouse: String,
     pub reading: Reading,
     pub selection: PrintSelection,
+    pub print_count: u32,
+}
+
+fn normalize_print_count(value: u32) -> u32 {
+    if value == 0 { 1 } else { value }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -153,6 +162,7 @@ pub struct DriverPrintResponse {
     pub tare: bool,
     pub tare_kg: f64,
     pub printer_status: String,
+    pub print_count: u32,
 }
 
 impl DriverPrintResponse {
@@ -178,6 +188,7 @@ impl DriverPrintResponse {
             tare: plan_job.tare,
             tare_kg: plan_job.tare_kg,
             printer_status,
+            print_count: job.print_count,
         }
     }
 }

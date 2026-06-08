@@ -1,5 +1,5 @@
 use super::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::print::PrintExecutionResult;
 use crate::runtime::PrintPipelineResult;
@@ -37,6 +37,27 @@ impl DriverPrintExecutor for AcceptingDriverPrintExecutor {
         &self,
         prepared: &PrintPipelineResult,
     ) -> Result<PrintExecutionResult, DriverPrintExecutionError> {
+        Ok(PrintExecutionResult {
+            printer: prepared.plan.printer,
+            status: "OK".to_string(),
+        })
+    }
+}
+
+#[derive(Debug)]
+struct CountingDriverPrintExecutor {
+    calls: Arc<Mutex<Vec<String>>>,
+}
+
+impl DriverPrintExecutor for CountingDriverPrintExecutor {
+    fn execute(
+        &self,
+        prepared: &PrintPipelineResult,
+    ) -> Result<PrintExecutionResult, DriverPrintExecutionError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(prepared.plan.job.epc.clone());
         Ok(PrintExecutionResult {
             printer: prepared.plan.printer,
             status: "OK".to_string(),
@@ -252,6 +273,40 @@ fn driver_print_executes_rs_owned_request_and_returns_done_response() {
     assert_eq!(body["qty"], 1.72);
     assert_eq!(body["gross_qty"], 2.5);
     assert_eq!(body["printer_status"], "OK");
+}
+
+#[test]
+fn driver_print_executes_duplicate_count_with_same_prepared_label() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let state = state_with_executor(
+        PrinterKind::Godex,
+        CountingDriverPrintExecutor {
+            calls: calls.clone(),
+        },
+    );
+    let response = handle_mobile_http_request_with_body(
+        &state,
+        "POST",
+        "/v1/driver/print",
+        &format!(
+            r#"{{
+                "epc":"{EPC}",
+                "item_code":"ITEM-1",
+                "item_name":"Green Tea",
+                "warehouse":"Stores - A",
+                "printer":"godex",
+                "gross_qty":2.5,
+                "print_count":5
+            }}"#
+        ),
+    );
+    let body = json(response.clone());
+
+    assert_eq!(response.status, 200);
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["print_count"], 5);
+    assert_eq!(calls.lock().unwrap().len(), 5);
+    assert!(calls.lock().unwrap().iter().all(|epc| epc == EPC));
 }
 
 #[test]
