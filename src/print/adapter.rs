@@ -209,7 +209,13 @@ mod tests {
             render
                 .commands
                 .iter()
-                .any(|command| command.contains("IJROCHI: ALI"))
+                .any(|command| command == "Y0,0,TEXTLBL")
+        );
+        assert!(
+            !render
+                .commands
+                .iter()
+                .any(|command| command.starts_with("AB,") && command.contains("EPC:"))
         );
         assert!(
             render
@@ -222,12 +228,6 @@ mod tests {
                 .commands
                 .iter()
                 .any(|command| command.contains("KG: 17"))
-        );
-        assert!(
-            render
-                .commands
-                .iter()
-                .any(|command| command.contains("EPC:"))
         );
         assert!(
             !render

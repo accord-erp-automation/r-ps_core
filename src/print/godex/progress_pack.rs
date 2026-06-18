@@ -1,10 +1,10 @@
-use crate::core::ProgressLabelContent;
+use crate::core::{PackLabelContent, ProgressLabelContent};
 
-use super::bmp::{MonoBitmap, encode_mono_bmp};
 use super::options::{LabelOptions, mm_dots};
 use super::pack::GodexPackRender;
 use super::qr::render_qr_graphic;
 use super::text::sanitize_label_text;
+use super::text_graphic::render_pack_epc_graphic;
 use super::wrap::wrap_text_for_ezpl;
 
 const TEXT_GRAPHIC_NAME: &str = "TEXTLBL";
@@ -16,7 +16,7 @@ pub fn build_progress_pack_render(
 ) -> Result<GodexPackRender, String> {
     let options = options.normalized_pack();
     let layout = compute_progress_layout(&options);
-    let text_graphic_bmp = encode_mono_bmp(&MonoBitmap::filled(8, 8, true));
+    let text_graphic_bmp = render_progress_epc_graphic(content, &options);
     let qr_graphic_bmp = render_qr_graphic(&content.qr_payload, layout.qr_box_dots)?;
 
     let mut commands = vec![
@@ -32,6 +32,7 @@ pub fn build_progress_pack_render(
         "^P1".to_string(),
         "^L".to_string(),
     ];
+    commands.push(format!("Y0,0,{TEXT_GRAPHIC_NAME}"));
     commands.extend(build_native_text_commands(content, &options, &layout));
     commands.extend([
         format!(
@@ -51,6 +52,20 @@ pub fn build_progress_pack_render(
         qr_graphic_name: QR_GRAPHIC_NAME.to_string(),
         qr_box_dots: layout.qr_box_dots,
     })
+}
+
+fn render_progress_epc_graphic(content: &ProgressLabelContent, options: &LabelOptions) -> Vec<u8> {
+    render_pack_epc_graphic(
+        &PackLabelContent {
+            company_name: content.company_name.clone(),
+            product_name: content.product_name.clone(),
+            kg_text: content.kg_text.clone(),
+            brutto_text: content.qty_text.clone(),
+            epc: content.epc.clone(),
+            qr_payload: content.qr_payload.clone(),
+        },
+        options,
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,11 +88,8 @@ fn build_native_text_commands(
     let text_right_gap = mm_dots(3.0, options.dpi);
     let text_width = 1.max(layout.qr_x - left_x - text_right_gap);
     let company_y = safe_margin + line_step;
-    let executor_y = company_y + line_step;
-    let item_y = executor_y + line_step;
-    let meter_y = mm_dots(31.0, options.dpi);
-    let kg_y = meter_y + line_step;
-    let epc_y = kg_y + line_step;
+    let item_y = company_y + line_step;
+    let qty_y = mm_dots(33.0, options.dpi);
 
     let mut commands = Vec::new();
     commands.push(native_text(
@@ -85,31 +97,23 @@ fn build_native_text_commands(
         company_y,
         &format!("COMPANY: {}", content.company_name),
     ));
-    if !content.executor_name.trim().is_empty() {
-        commands.push(native_text(
-            left_x,
-            executor_y,
-            &format!("IJROCHI: {}", content.executor_name),
-        ));
-    }
 
     let product = format!("MAHSULOT NOMI: {}", content.product_name);
     let product_lines = wrap_text_for_ezpl(&product, text_width, 1, 8, 8);
-    for (idx, line) in product_lines.iter().take(3).enumerate() {
+    for (idx, line) in product_lines.iter().take(4).enumerate() {
         commands.push(native_text(left_x, item_y + idx as i32 * line_step, line));
     }
 
     commands.push(native_text(
         left_x,
-        meter_y,
-        &format!("METRAJ: {}", content.qty_text),
+        qty_y,
+        &format!("KG: {}", content.kg_text),
     ));
     commands.push(native_text(
         left_x,
-        kg_y,
-        &format!("KG: {}", content.kg_text),
+        qty_y + line_step,
+        &format!("METRAJ: {}", content.qty_text),
     ));
-    commands.push(native_text(left_x, epc_y, &format!("EPC: {}", content.epc)));
     commands
 }
 
@@ -129,8 +133,8 @@ fn compute_progress_layout(options: &LabelOptions) -> ProgressLayout {
     let base_qr_x = label_width_dots - qr_box_dots - qr_right_gap_dots;
     let qr_x = (label_width_dots - qr_box_dots).min(left_x.max(base_qr_x));
 
-    let epc_text_y = mm_dots(41.0, options.dpi);
-    let mut qr_y = (safe_margin_dots + line_step * 2).max(epc_text_y + line_step);
+    let qty_y = mm_dots(33.0, options.dpi);
+    let mut qr_y = (safe_margin_dots + line_step * 2).max(qty_y + line_step);
     qr_y = (label_length_dots - safe_margin_dots - mm_dots(18.0, options.dpi))
         .min(qr_y + mm_dots(8.0, options.dpi));
     let epc_y = 0.max(safe_margin_dots - line_step * 5);
@@ -163,20 +167,21 @@ mod tests {
     }
 
     #[test]
-    fn builds_progress_commands_with_meter_kg_and_epc_labels() {
+    fn builds_progress_commands_like_gscale_pack_layout_with_meter_and_kg_labels() {
         let render = build_progress_pack_render(&content(), LabelOptions::default_pack()).unwrap();
 
         assert!(
             render
                 .commands
                 .iter()
-                .any(|command| command.contains("IJROCHI: ALI"))
+                .any(|command| command == "Y0,0,TEXTLBL")
         );
         assert!(
-            render
+            !render
                 .commands
                 .iter()
-                .any(|command| command.contains("METRAJ: 120 M"))
+                .any(|command| command.starts_with("AB,") && command.contains("EPC:")),
+            "EPC text must stay on the top bitmap graphic like standard pack"
         );
         assert!(
             render
@@ -188,13 +193,27 @@ mod tests {
             render
                 .commands
                 .iter()
-                .any(|command| command.contains("EPC: 400100000000000000000001"))
+                .any(|command| command.contains("METRAJ: 120 M"))
         );
         assert!(
             !render
                 .commands
                 .iter()
                 .any(|command| command.contains("NETTO:") || command.contains("BRUTTO:"))
+        );
+        assert_eq!(
+            render
+                .commands
+                .iter()
+                .find(|command| command.starts_with("BA,"))
+                .unwrap(),
+            "BA,0,24,1,2,42,0,0,400100000000000000000001"
+        );
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command == "Y224,224,QRLBL")
         );
         assert_eq!(render.qr_payload, "400100000000000000000001");
         assert_eq!(&render.text_graphic_bmp[0..2], b"BM");
