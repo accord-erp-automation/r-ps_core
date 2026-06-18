@@ -45,9 +45,31 @@ pub fn prepare_print_command_with_label_meta(
     label_kind: &str,
     executor_name: &str,
 ) -> Result<PrintPipelineResult, PrintPipelineError> {
+    prepare_print_command_with_progress_label_meta(
+        reading,
+        selection,
+        epc,
+        label_kind,
+        executor_name,
+        None,
+        "",
+    )
+}
+
+pub fn prepare_print_command_with_progress_label_meta(
+    reading: &Reading,
+    selection: PrintSelection,
+    epc: &str,
+    label_kind: &str,
+    executor_name: &str,
+    progress_qty: Option<f64>,
+    progress_unit: &str,
+) -> Result<PrintPipelineResult, PrintPipelineError> {
     let mut plan = plan_core_print(reading, selection, epc).map_err(PrintPipelineError::Core)?;
     plan.job.label_kind = label_kind.trim().to_ascii_lowercase();
     plan.job.executor_name = executor_name.trim().to_string();
+    plan.job.progress_qty = progress_qty;
+    plan.job.progress_unit = progress_unit.trim().to_string();
     let command = build_print_command(plan.clone()).map_err(PrintPipelineError::Adapter)?;
 
     Ok(PrintPipelineResult { plan, command })

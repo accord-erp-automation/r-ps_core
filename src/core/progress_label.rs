@@ -7,6 +7,7 @@ pub struct ProgressLabelContent {
     pub company_name: String,
     pub product_name: String,
     pub qty_text: String,
+    pub kg_text: String,
     pub executor_name: String,
     pub epc: String,
     pub qr_payload: String,
@@ -19,11 +20,17 @@ pub fn build_progress_label_content(
     let company_name = uppercase_clean(company_name);
     let product_name = uppercase_clean(product_name_or_epc(job));
     let qty_text = progress_qty_text(job);
+    let kg_text = progress_kg_text(job);
     let executor_name = uppercase_clean(&job.executor_name);
     let epc = uppercase_clean(&job.epc);
 
-    if company_name.is_empty() || product_name.is_empty() || qty_text.is_empty() || epc.is_empty() {
-        return Err("company, product, qty, and epc are required".to_string());
+    if company_name.is_empty()
+        || product_name.is_empty()
+        || qty_text.is_empty()
+        || kg_text.is_empty()
+        || epc.is_empty()
+    {
+        return Err("company, product, qty, kg, and epc are required".to_string());
     }
 
     let qr_payload = epc.clone();
@@ -31,6 +38,7 @@ pub fn build_progress_label_content(
         company_name,
         product_name,
         qty_text,
+        kg_text,
         executor_name,
         epc,
         qr_payload,
@@ -47,8 +55,21 @@ fn product_name_or_epc(job: &CorePrintJob) -> &str {
 }
 
 fn progress_qty_text(job: &CorePrintJob) -> String {
-    let qty = normalize_qty_value(&job.net_qty.to_string());
-    let unit = uppercase_clean(&job.unit);
+    let qty = normalize_qty_value(&job.progress_qty.unwrap_or(job.net_qty).to_string());
+    let unit = uppercase_clean(progress_unit(job));
+    qty_with_unit(qty, unit)
+}
+
+fn progress_kg_text(job: &CorePrintJob) -> String {
+    normalize_qty_value(&job.gross_qty.to_string())
+}
+
+fn progress_unit(job: &CorePrintJob) -> &str {
+    let unit = job.progress_unit.trim();
+    if unit.is_empty() { &job.unit } else { unit }
+}
+
+fn qty_with_unit(qty: String, unit: String) -> String {
     if unit.is_empty() {
         qty
     } else {
@@ -101,8 +122,8 @@ mod tests {
         let mut job = CorePrintJob::from_selection(
             "400100000000000000000001",
             120.0,
-            120.0,
-            "m",
+            17.0,
+            "kg",
             PrintSelection {
                 item_code: "ORDER-1202".to_string(),
                 item_name: "Vesta yarim tayyor, pechat holatda, pauza".to_string(),
@@ -117,6 +138,8 @@ mod tests {
         );
         job.executor_name = "Ali".to_string();
         job.label_kind = "progress".to_string();
+        job.progress_qty = Some(120.0);
+        job.progress_unit = "m".to_string();
         job
     }
 
@@ -130,6 +153,7 @@ mod tests {
             "VESTA YARIM TAYYOR, PECHAT HOLATDA, PAUZA"
         );
         assert_eq!(content.qty_text, "120 M");
+        assert_eq!(content.kg_text, "17");
         assert_eq!(content.executor_name, "ALI");
         assert_eq!(content.epc, "400100000000000000000001");
         assert_eq!(content.qr_payload, "400100000000000000000001");

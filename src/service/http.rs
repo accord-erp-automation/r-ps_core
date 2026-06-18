@@ -17,7 +17,7 @@ use super::monitor_runtime::MonitorRuntimeState;
 use super::print_activity::PrintActivityState;
 use crate::print::capabilities::manifest_for;
 use crate::print::printer::PrinterKind;
-use crate::runtime::prepare_print_command_with_label_meta;
+use crate::runtime::prepare_print_command_with_progress_label_meta;
 
 #[derive(Clone, Debug)]
 pub struct MobileHttpState {
@@ -277,12 +277,14 @@ fn driver_print_response(state: &MobileHttpState, body: &str) -> MobileHttpRespo
         job.reading.unit
     );
 
-    let prepared = match prepare_print_command_with_label_meta(
+    let prepared = match prepare_print_command_with_progress_label_meta(
         &job.reading,
         job.selection.clone(),
         &job.epc,
         &job.label_kind,
         &job.executor_name,
+        job.progress_qty,
+        &job.progress_unit,
     ) {
         Ok(prepared) => prepared,
         Err(err) => {

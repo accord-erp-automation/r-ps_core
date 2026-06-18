@@ -197,8 +197,10 @@ mod tests {
         plan.job.executor_name = "Ali".to_string();
         plan.job.item_name = "Vesta yarim tayyor, 7 ta rangli pechat holatda, pauza".to_string();
         plan.job.net_qty = 120.0;
-        plan.job.gross_qty = 120.0;
-        plan.job.unit = "m".to_string();
+        plan.job.gross_qty = 17.0;
+        plan.job.unit = "kg".to_string();
+        plan.job.progress_qty = Some(120.0);
+        plan.job.progress_unit = "m".to_string();
         let PrintCommand::GodexPack(render) = build_print_command(plan).unwrap() else {
             panic!("expected godex pack render");
         };
@@ -213,7 +215,19 @@ mod tests {
             render
                 .commands
                 .iter()
-                .any(|command| command.contains("MIQDOR: 120 M"))
+                .any(|command| command.contains("METRAJ: 120 M"))
+        );
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command.contains("KG: 17"))
+        );
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command.contains("EPC:"))
         );
         assert!(
             !render

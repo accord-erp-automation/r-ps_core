@@ -35,6 +35,8 @@ pub struct DriverPrintRequest {
     #[serde(default)]
     pub unit: String,
     #[serde(default)]
+    pub progress_unit: String,
+    #[serde(default)]
     pub tare_enabled: bool,
     #[serde(default)]
     pub tare: bool,
@@ -83,6 +85,16 @@ impl DriverPrintRequest {
         let item_name = fallback_item_name(&self.item_name, &item_code);
         let executor_name = self.executor_name.trim().to_string();
         let label_kind = self.label_kind.trim().to_ascii_lowercase();
+        let progress_qty = if label_kind == "progress" {
+            Some(self.qty.unwrap_or(gross_qty))
+        } else {
+            None
+        };
+        let progress_unit = if label_kind == "progress" {
+            normalize_progress_unit(&self.progress_unit, &unit)
+        } else {
+            String::new()
+        };
         let print_count = normalize_print_count(self.print_count);
 
         let selection = PrintSelection {
@@ -108,6 +120,8 @@ impl DriverPrintRequest {
             warehouse: selection.warehouse.clone(),
             executor_name,
             label_kind,
+            progress_qty,
+            progress_unit,
             reading,
             selection,
             print_count,
@@ -121,6 +135,8 @@ pub struct DriverPrintJob {
     pub warehouse: String,
     pub executor_name: String,
     pub label_kind: String,
+    pub progress_qty: Option<f64>,
+    pub progress_unit: String,
     pub reading: Reading,
     pub selection: PrintSelection,
     pub print_count: u32,
@@ -260,6 +276,19 @@ fn normalize_unit(unit: &str) -> String {
     }
 }
 
+fn normalize_progress_unit(progress_unit: &str, unit: &str) -> String {
+    let value = progress_unit.trim();
+    if !value.is_empty() {
+        return value.to_string();
+    }
+    let unit = unit.trim();
+    if unit.is_empty() || unit.eq_ignore_ascii_case("kg") {
+        "m".to_string()
+    } else {
+        unit.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,8 +333,10 @@ mod tests {
                 "executor_name":"Ali",
                 "printer":"godex",
                 "label_kind":"progress",
-                "gross_qty":120,
-                "unit":"m"
+                "gross_qty":17,
+                "qty":120,
+                "unit":"kg",
+                "progress_unit":"m"
             }"#,
         )
         .unwrap();
@@ -313,8 +344,10 @@ mod tests {
 
         assert_eq!(job.label_kind, "progress");
         assert_eq!(job.executor_name, "Ali");
-        assert_eq!(job.reading.weight, Some(120.0));
-        assert_eq!(job.reading.unit, "m");
+        assert_eq!(job.reading.weight, Some(17.0));
+        assert_eq!(job.reading.unit, "kg");
+        assert_eq!(job.progress_qty, Some(120.0));
+        assert_eq!(job.progress_unit, "m");
     }
 
     #[test]

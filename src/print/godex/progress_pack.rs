@@ -75,7 +75,9 @@ fn build_native_text_commands(
     let company_y = safe_margin + line_step;
     let executor_y = company_y + line_step;
     let item_y = executor_y + line_step;
-    let qty_y = mm_dots(34.0, options.dpi);
+    let meter_y = mm_dots(31.0, options.dpi);
+    let kg_y = meter_y + line_step;
+    let epc_y = kg_y + line_step;
 
     let mut commands = Vec::new();
     commands.push(native_text(
@@ -99,9 +101,15 @@ fn build_native_text_commands(
 
     commands.push(native_text(
         left_x,
-        qty_y,
-        &format!("MIQDOR: {}", content.qty_text),
+        meter_y,
+        &format!("METRAJ: {}", content.qty_text),
     ));
+    commands.push(native_text(
+        left_x,
+        kg_y,
+        &format!("KG: {}", content.kg_text),
+    ));
+    commands.push(native_text(left_x, epc_y, &format!("EPC: {}", content.epc)));
     commands
 }
 
@@ -121,8 +129,8 @@ fn compute_progress_layout(options: &LabelOptions) -> ProgressLayout {
     let base_qr_x = label_width_dots - qr_box_dots - qr_right_gap_dots;
     let qr_x = (label_width_dots - qr_box_dots).min(left_x.max(base_qr_x));
 
-    let qty_y = mm_dots(34.0, options.dpi);
-    let mut qr_y = (safe_margin_dots + line_step * 2).max(qty_y + line_step);
+    let epc_text_y = mm_dots(41.0, options.dpi);
+    let mut qr_y = (safe_margin_dots + line_step * 2).max(epc_text_y + line_step);
     qr_y = (label_length_dots - safe_margin_dots - mm_dots(18.0, options.dpi))
         .min(qr_y + mm_dots(8.0, options.dpi));
     let epc_y = 0.max(safe_margin_dots - line_step * 5);
@@ -147,6 +155,7 @@ mod tests {
             company_name: "ACCORD".to_string(),
             product_name: "VESTA YARIM TAYYOR, PECHAT HOLATDA, PAUZA".to_string(),
             qty_text: "120 M".to_string(),
+            kg_text: "17".to_string(),
             executor_name: "ALI".to_string(),
             epc: "400100000000000000000001".to_string(),
             qr_payload: "400100000000000000000001".to_string(),
@@ -154,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn builds_progress_commands_without_pack_netto_brutto_labels() {
+    fn builds_progress_commands_with_meter_kg_and_epc_labels() {
         let render = build_progress_pack_render(&content(), LabelOptions::default_pack()).unwrap();
 
         assert!(
@@ -167,7 +176,19 @@ mod tests {
             render
                 .commands
                 .iter()
-                .any(|command| command.contains("MIQDOR: 120 M"))
+                .any(|command| command.contains("METRAJ: 120 M"))
+        );
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command.contains("KG: 17"))
+        );
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command.contains("EPC: 400100000000000000000001"))
         );
         assert!(
             !render
