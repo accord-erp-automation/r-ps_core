@@ -17,6 +17,10 @@ pub struct DriverPrintRequest {
     #[serde(default)]
     pub warehouse: String,
     #[serde(default)]
+    pub executor_name: String,
+    #[serde(default)]
+    pub label_kind: String,
+    #[serde(default)]
     pub print_mode: String,
     #[serde(default)]
     pub mode: String,
@@ -77,6 +81,8 @@ impl DriverPrintRequest {
         let unit = normalize_unit(&self.unit);
         let tare_enabled = self.tare_enabled || self.tare || self.tare_kg > 0.0;
         let item_name = fallback_item_name(&self.item_name, &item_code);
+        let executor_name = self.executor_name.trim().to_string();
+        let label_kind = self.label_kind.trim().to_ascii_lowercase();
         let print_count = normalize_print_count(self.print_count);
 
         let selection = PrintSelection {
@@ -100,6 +106,8 @@ impl DriverPrintRequest {
         Ok(DriverPrintJob {
             epc,
             warehouse: selection.warehouse.clone(),
+            executor_name,
+            label_kind,
             reading,
             selection,
             print_count,
@@ -111,6 +119,8 @@ impl DriverPrintRequest {
 pub struct DriverPrintJob {
     pub epc: String,
     pub warehouse: String,
+    pub executor_name: String,
+    pub label_kind: String,
     pub reading: Reading,
     pub selection: PrintSelection,
     pub print_count: u32,
@@ -281,6 +291,30 @@ mod tests {
         assert_eq!(job.reading.unit, "kg");
         assert!(job.selection.tare_enabled);
         assert_eq!(job.selection.tare_kg, 0.78);
+    }
+
+    #[test]
+    fn keeps_progress_label_metadata_for_driver_job() {
+        let request = DriverPrintRequest::from_json(
+            r#"{
+                "epc":"400100000000000000000001",
+                "item_code":"zakaz-1202",
+                "item_name":"Vesta yarim tayyor, 7 ta rangli pechat holatda, pauza",
+                "warehouse":"Ijrochi: Ali",
+                "executor_name":"Ali",
+                "printer":"godex",
+                "label_kind":"progress",
+                "gross_qty":120,
+                "unit":"m"
+            }"#,
+        )
+        .unwrap();
+        let job = request.into_job(PrinterKind::Zebra).unwrap();
+
+        assert_eq!(job.label_kind, "progress");
+        assert_eq!(job.executor_name, "Ali");
+        assert_eq!(job.reading.weight, Some(120.0));
+        assert_eq!(job.reading.unit, "m");
     }
 
     #[test]

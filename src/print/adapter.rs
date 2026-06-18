@@ -1,8 +1,10 @@
 use std::fmt;
 
-use crate::core::{CorePrintJob, CorePrintPlan, build_pack_label_content};
+use crate::core::{
+    CorePrintJob, CorePrintPlan, build_pack_label_content, build_progress_label_content,
+};
 
-use super::godex::{GodexPackRender, LabelOptions, build_pack_render};
+use super::godex::{GodexPackRender, LabelOptions, build_pack_render, build_progress_pack_render};
 use super::mode::PrintMode;
 use super::printer::PrinterKind;
 use super::weight::format_print_weight_labels;
@@ -39,9 +41,21 @@ pub fn build_print_command(plan: CorePrintPlan) -> Result<PrintCommand, PrintAda
 }
 
 fn build_godex_command(job: CorePrintJob) -> Result<PrintCommand, PrintAdapterError> {
+    if job.label_kind.trim().eq_ignore_ascii_case("progress") {
+        return build_godex_progress_command(job);
+    }
+
     let content =
         build_pack_label_content(&job, "Accord", "5kg").map_err(PrintAdapterError::BuildCommand)?;
     let render = build_pack_render(&content, LabelOptions::default_pack())
+        .map_err(PrintAdapterError::BuildCommand)?;
+    Ok(PrintCommand::GodexPack(render))
+}
+
+fn build_godex_progress_command(job: CorePrintJob) -> Result<PrintCommand, PrintAdapterError> {
+    let content =
+        build_progress_label_content(&job, "Accord").map_err(PrintAdapterError::BuildCommand)?;
+    let render = build_progress_pack_render(&content, LabelOptions::default_pack())
         .map_err(PrintAdapterError::BuildCommand)?;
     Ok(PrintCommand::GodexPack(render))
 }
@@ -174,5 +188,38 @@ mod tests {
         );
         assert_eq!(render.qr_payload, "3034257BF7194E406994036B");
         assert_eq!(render.qr_box_dots, 144);
+    }
+
+    #[test]
+    fn builds_godex_progress_render_without_pack_weight_labels() {
+        let mut plan = plan(PrintMode::LabelOnly, Some(PrinterKind::Godex));
+        plan.job.label_kind = "progress".to_string();
+        plan.job.executor_name = "Ali".to_string();
+        plan.job.item_name = "Vesta yarim tayyor, 7 ta rangli pechat holatda, pauza".to_string();
+        plan.job.net_qty = 120.0;
+        plan.job.gross_qty = 120.0;
+        plan.job.unit = "m".to_string();
+        let PrintCommand::GodexPack(render) = build_print_command(plan).unwrap() else {
+            panic!("expected godex pack render");
+        };
+
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command.contains("IJROCHI: ALI"))
+        );
+        assert!(
+            render
+                .commands
+                .iter()
+                .any(|command| command.contains("MIQDOR: 120 M"))
+        );
+        assert!(
+            !render
+                .commands
+                .iter()
+                .any(|command| command.contains("NETTO:") || command.contains("BRUTTO:"))
+        );
     }
 }
