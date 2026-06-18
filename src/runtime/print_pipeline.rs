@@ -112,10 +112,7 @@ mod tests {
         let PrintCommand::GodexPack(render) = result.command else {
             panic!("expected godex pack render");
         };
-        assert_eq!(
-            render.qr_payload,
-            "https://scan.wspace.sbs/L/ACCORD/GREEN+TEA/1.7/2.5/3034257BF7194E406994036B"
-        );
+        assert_eq!(render.qr_payload, "3034257BF7194E406994036B");
         assert_eq!(render.commands[11], "Y0,0,TEXTLBL");
         assert!(
             !render

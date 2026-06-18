@@ -172,10 +172,7 @@ mod tests {
                 .iter()
                 .any(|command| command == "Y224,224,QRLBL")
         );
-        assert_eq!(
-            render.qr_payload,
-            "https://scan.wspace.sbs/L/ACCORD/GREEN+TEA/1.7/2.5/3034257BF7194E406994036B"
-        );
+        assert_eq!(render.qr_payload, "3034257BF7194E406994036B");
         assert_eq!(render.qr_box_dots, 144);
     }
 }

@@ -29,8 +29,7 @@ pub fn build_pack_label_content(
         return Err("company, product, kg, and epc are required".to_string());
     }
 
-    let qr_payload =
-        encode_scan_payload(&company_name, &product_name, &kg_text, &brutto_text, &epc);
+    let qr_payload = epc.clone();
     Ok(PackLabelContent {
         company_name,
         product_name,
@@ -163,10 +162,7 @@ mod tests {
         assert_eq!(content.kg_text, "1.3");
         assert_eq!(content.brutto_text, content.kg_text);
         assert_eq!(content.epc, "3034257BF7194E406994036B");
-        assert_eq!(
-            content.qr_payload,
-            "https://scan.wspace.sbs/L/ACCORD+LLC/GREEN+TEA/1.3/1.3/3034257BF7194E406994036B"
-        );
+        assert_eq!(content.qr_payload, "3034257BF7194E406994036B");
     }
 
     #[test]
