@@ -87,6 +87,14 @@ impl MobileHttpResponse {
         }
     }
 
+    pub fn empty(status: u16) -> Self {
+        Self {
+            status,
+            content_type: "text/plain",
+            body: Vec::new(),
+        }
+    }
+
     pub fn body_text(&self) -> String {
         String::from_utf8_lossy(&self.body).into_owned()
     }
@@ -123,6 +131,10 @@ pub fn handle_mobile_http_request_with_body(
 ) -> MobileHttpResponse {
     let method = method.trim().to_ascii_uppercase();
     let path = normalize_path(path);
+
+    if method == "OPTIONS" && is_cors_path(&path) {
+        return MobileHttpResponse::empty(204);
+    }
 
     match (method.as_str(), path.as_str()) {
         ("GET", "/healthz") => {
@@ -219,6 +231,28 @@ pub fn handle_mobile_http_request_with_body(
         ),
         _ => MobileHttpResponse::json(404, &MobileHttpErrorResponse { error: "not_found" }),
     }
+}
+
+fn is_cors_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/healthz"
+            | "/v1/mobile/handshake"
+            | "/v1/mobile/printer/capabilities"
+            | "/v1/mobile/monitor/state"
+            | "/v1/mobile/monitor/stream"
+            | "/v1/mobile/setup/status"
+            | "/v1/mobile/setup/warehouse"
+            | "/v1/mobile/items"
+            | "/v1/mobile/warehouses"
+            | "/v1/mobile/archive"
+            | "/v1/mobile/batch/state"
+            | "/v1/mobile/batch/start"
+            | "/v1/mobile/batch/stop"
+            | "/v1/mobile/batch/manual-print"
+            | "/v1/driver/print"
+            | "/v1/mobile/driver/print"
+    ) || is_item_warehouses_path(path)
 }
 
 fn driver_print_response(state: &MobileHttpState, body: &str) -> MobileHttpResponse {

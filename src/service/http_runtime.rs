@@ -159,7 +159,7 @@ fn write_monitor_stream_response(
 ) -> io::Result<()> {
     write!(
         stream,
-        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nX-Accel-Buffering: no\r\n\r\n"
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nX-Accel-Buffering: no\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Accept, Authorization\r\n\r\n"
     )?;
     stream.write_all(b": connected\n\n")?;
     stream.flush()?;
@@ -207,6 +207,7 @@ fn monitor_stream_snapshot_frame(state: &MobileHttpState) -> io::Result<SseFrame
 fn write_http_response(stream: &mut TcpStream, response: &MobileHttpResponse) -> io::Result<()> {
     let status_text = match response.status {
         200 => "OK",
+        204 => "No Content",
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -218,7 +219,7 @@ fn write_http_response(stream: &mut TcpStream, response: &MobileHttpResponse) ->
     };
     write!(
         stream,
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Accept, Authorization\r\nAccess-Control-Max-Age: 86400\r\n\r\n",
         response.status,
         status_text,
         response.content_type,
