@@ -86,7 +86,7 @@ pub fn build_qolip_code_qr_command(
     Ok("~PS\n".to_string()
         + "^XA\n"
         + "^LH0,0\n"
-        + "^FO8,8^A0N,18,16^FB784,1,0,C,0\n"
+        + "^FO8,8^A0N,24,20^FB784,1,0,C,0\n"
         + &format!("^FD{item_name}^FS\n")
         + "^FO120,56^BQN,2,11^FDLA,"
         + &epc
