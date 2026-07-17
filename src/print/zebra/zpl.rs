@@ -43,6 +43,32 @@ pub fn build_label_only_print_command(
     build_label_only_print_command_with_weights(epc, qty_text, "", item_name)
 }
 
+pub fn build_qolip_cell_qr_command(epc: &str, cell_name: &str) -> Result<String, String> {
+    let epc = sanitize_zpl_text(epc.trim());
+    if epc.is_empty() {
+        return Err("qr payload is empty".to_string());
+    }
+    let cell_name = {
+        let value = sanitize_zpl_text(cell_name.trim());
+        if value.is_empty() {
+            "-".to_string()
+        } else {
+            value
+        }
+    };
+
+    Ok("~PS\n".to_string()
+        + "^XA\n"
+        + "^LH0,0\n"
+        + "^FO8,16^A0N,88,76^FB784,1,0,C,0\n"
+        + &format!("^FD{cell_name}^FS\n")
+        + "^FO120,124^BQN,2,11^FDLA,"
+        + &epc
+        + "^FS\n"
+        + "^PQ1\n"
+        + "^XZ\n")
+}
+
 pub fn build_label_only_print_command_with_weights(
     epc: &str,
     qty_text: &str,
@@ -145,5 +171,15 @@ mod tests {
         let err = build_rfid_encode_command("ZZZZ", "1 kg", "Tea").unwrap_err();
 
         assert_eq!(err, "epc faqat hex bo'lishi kerak");
+    }
+
+    #[test]
+    fn builds_qolip_cell_qr_without_rfid_write() {
+        let zpl = build_qolip_cell_qr_command("CELL-QR-A1", "A1").unwrap();
+
+        assert!(zpl.contains("^FO8,16^A0N,88,76^FB784,1,0,C,0"));
+        assert!(zpl.contains("^FDLA,CELL-QR-A1^FS"));
+        assert!(zpl.contains("^FO120,124^BQN,2,11"));
+        assert!(!zpl.contains("^RFW"));
     }
 }

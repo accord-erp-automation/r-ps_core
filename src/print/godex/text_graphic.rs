@@ -74,6 +74,18 @@ pub fn render_pack_epc_graphic(content: &PackLabelContent, options: &LabelOption
     encode_mono_bmp(&canvas.crop_ink())
 }
 
+pub fn render_qolip_cell_name_graphic(name: &str, options: &LabelOptions) -> Vec<u8> {
+    let options = options.clone().normalized_pack();
+    let label_width = mm_dots(f64::from(options.label_width_mm), options.dpi).max(1) as usize;
+    let mut canvas = MonoBitmap::filled(label_width, 96, true);
+    let name = sanitize_label_text(name).to_ascii_uppercase();
+    let scale = 8;
+    let text_width = name.chars().count() as i32 * 6 * scale;
+    let x = ((label_width as i32 - text_width) / 2).max(0);
+    draw_text(&mut canvas, x, 16, scale as usize, &name);
+    encode_mono_bmp(&canvas.crop_ink())
+}
+
 fn draw_wrapped_product(canvas: &mut MonoBitmap, x: i32, y: i32, product_name: &str) {
     let prefix = "MAHSULOT NOMI:";
     let mut line = format!("{prefix} {product_name}");

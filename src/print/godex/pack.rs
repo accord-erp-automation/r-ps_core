@@ -3,7 +3,7 @@ use crate::core::PackLabelContent;
 use super::options::{LabelOptions, mm_dots};
 use super::qr::render_qr_graphic;
 use super::text::sanitize_label_text;
-use super::text_graphic::render_pack_epc_graphic;
+use super::text_graphic::{render_pack_epc_graphic, render_qolip_cell_name_graphic};
 use super::wrap::wrap_text_for_ezpl;
 
 const TEXT_GRAPHIC_NAME: &str = "TEXTLBL";
@@ -61,6 +61,49 @@ pub fn build_pack_render(
         text_graphic_name: TEXT_GRAPHIC_NAME.to_string(),
         qr_graphic_name: QR_GRAPHIC_NAME.to_string(),
         qr_box_dots: layout.qr_box_dots,
+    })
+}
+
+pub fn build_qolip_cell_render(
+    content: &PackLabelContent,
+    options: LabelOptions,
+) -> Result<GodexPackRender, String> {
+    let options = options.normalized_pack();
+    let label_width_dots = mm_dots(f64::from(options.label_width_mm), options.dpi);
+    let label_length_dots = mm_dots(f64::from(options.label_length_mm), options.dpi);
+    let qr_box_dots = mm_dots(36.0, options.dpi);
+    let qr_x = (label_width_dots - qr_box_dots).max(0) / 2;
+    let qr_y = mm_dots(12.0, options.dpi).max(
+        (label_length_dots - qr_box_dots - mm_dots(options.safe_margin_mm, options.dpi) / 2)
+            .max(0),
+    );
+    let qr_graphic_bmp = render_qr_graphic(&content.qr_payload, qr_box_dots)?;
+    let cell_name = sanitize_label_text(&content.product_name);
+    let text_graphic_bmp = render_qolip_cell_name_graphic(&cell_name, &options);
+
+    Ok(GodexPackRender {
+        commands: vec![
+            "~S,ESG".to_string(),
+            "^AD".to_string(),
+            "^XSET,UNICODE,1".to_string(),
+            "^XSET,IMMEDIATE,1".to_string(),
+            "^XSET,ACTIVERESPONSE,1".to_string(),
+            "^XSET,CODEPAGE,16".to_string(),
+            format!("^Q{},{}", options.label_length_mm, options.label_gap_mm),
+            format!("^W{}", options.label_width_mm),
+            "^H10".to_string(),
+            "^P1".to_string(),
+            "^L".to_string(),
+            format!("Y0,0,{TEXT_GRAPHIC_NAME}"),
+            format!("Y{qr_x},{qr_y},QRLBL"),
+            "E".to_string(),
+        ],
+        qr_payload: content.qr_payload.clone(),
+        text_graphic_bmp,
+        qr_graphic_bmp,
+        text_graphic_name: TEXT_GRAPHIC_NAME.to_string(),
+        qr_graphic_name: QR_GRAPHIC_NAME.to_string(),
+        qr_box_dots,
     })
 }
 
@@ -258,5 +301,17 @@ mod tests {
                 .any(|command| command == "Y320,136,QRLBL")
         );
         assert_eq!(render.qr_box_dots, 128);
+    }
+
+    #[test]
+    fn builds_qolip_cell_layout_with_large_centered_qr() {
+        let render = build_qolip_cell_render(&content(), LabelOptions::default_pack()).unwrap();
+
+        assert_eq!(render.qr_box_dots, 288);
+        assert!(render.commands.iter().any(|command| {
+            command == "AB,0,16,4,4,0,1,GREEN TEA"
+        }));
+        assert!(render.commands.iter().any(|command| command == "Y56,96,QRLBL"));
+        assert_eq!(render.text_graphic_name, "TEXTLBL");
     }
 }
