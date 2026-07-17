@@ -86,6 +86,27 @@ pub fn render_qolip_cell_name_graphic(name: &str, options: &LabelOptions) -> Vec
     encode_mono_bmp(&canvas.crop_ink())
 }
 
+pub fn render_qolip_code_text_graphic(
+    name: &str,
+    code: &str,
+    options: &LabelOptions,
+) -> Vec<u8> {
+    let options = options.clone().normalized_pack();
+    let label_width = mm_dots(f64::from(options.label_width_mm), options.dpi).max(1) as usize;
+    let mut canvas = MonoBitmap::filled(label_width, 400, true);
+    let name = sanitize_label_text(name).to_ascii_uppercase();
+    let code = sanitize_label_text(code).to_ascii_uppercase();
+    draw_centered_text(&mut canvas, &name, 8, 4);
+    draw_centered_text(&mut canvas, &code, 352, 4);
+    encode_mono_bmp(&canvas.crop_ink())
+}
+
+fn draw_centered_text(canvas: &mut MonoBitmap, text: &str, y: i32, scale: usize) {
+    let text_width = text.chars().count() as i32 * 6 * scale as i32;
+    let x = ((canvas.width() as i32 - text_width) / 2).max(0);
+    draw_text(canvas, x, y, scale, text);
+}
+
 fn draw_wrapped_product(canvas: &mut MonoBitmap, x: i32, y: i32, product_name: &str) {
     let prefix = "MAHSULOT NOMI:";
     let mut line = format!("{prefix} {product_name}");

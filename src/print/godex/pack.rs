@@ -3,7 +3,9 @@ use crate::core::PackLabelContent;
 use super::options::{LabelOptions, mm_dots};
 use super::qr::render_qr_graphic;
 use super::text::sanitize_label_text;
-use super::text_graphic::{render_pack_epc_graphic, render_qolip_cell_name_graphic};
+use super::text_graphic::{
+    render_pack_epc_graphic, render_qolip_cell_name_graphic, render_qolip_code_text_graphic,
+};
 use super::wrap::wrap_text_for_ezpl;
 
 const TEXT_GRAPHIC_NAME: &str = "TEXTLBL";
@@ -70,7 +72,6 @@ pub fn build_qolip_cell_render(
 ) -> Result<GodexPackRender, String> {
     let options = options.normalized_pack();
     let label_width_dots = mm_dots(f64::from(options.label_width_mm), options.dpi);
-    let label_length_dots = mm_dots(f64::from(options.label_length_mm), options.dpi);
     let qr_box_dots = mm_dots(36.0, options.dpi);
     let qr_x = (label_width_dots - qr_box_dots).max(0) / 2;
     let qr_y = mm_dots(12.0, options.dpi).max(
@@ -95,6 +96,49 @@ pub fn build_qolip_cell_render(
             "^P1".to_string(),
             "^L".to_string(),
             format!("Y0,0,{TEXT_GRAPHIC_NAME}"),
+            format!("Y{qr_x},{qr_y},QRLBL"),
+            "E".to_string(),
+        ],
+        qr_payload: content.qr_payload.clone(),
+        text_graphic_bmp,
+        qr_graphic_bmp,
+        text_graphic_name: TEXT_GRAPHIC_NAME.to_string(),
+        qr_graphic_name: QR_GRAPHIC_NAME.to_string(),
+        qr_box_dots,
+    })
+}
+
+pub fn build_qolip_code_render(
+    content: &PackLabelContent,
+    code: &str,
+    options: LabelOptions,
+) -> Result<GodexPackRender, String> {
+    let options = options.normalized_pack();
+    let label_width_dots = mm_dots(f64::from(options.label_width_mm), options.dpi);
+    let qr_box_dots = mm_dots(36.0, options.dpi);
+    let qr_x = (label_width_dots - qr_box_dots).max(0) / 2;
+    let qr_y = mm_dots(7.0, options.dpi);
+    let qr_graphic_bmp = render_qr_graphic(&content.qr_payload, qr_box_dots)?;
+    let text_graphic_bmp = render_qolip_code_text_graphic(
+        &content.product_name,
+        code,
+        &options,
+    );
+
+    Ok(GodexPackRender {
+        commands: vec![
+            "~S,ESG".to_string(),
+            "^AD".to_string(),
+            "^XSET,UNICODE,1".to_string(),
+            "^XSET,IMMEDIATE,1".to_string(),
+            "^XSET,ACTIVERESPONSE,1".to_string(),
+            "^XSET,CODEPAGE,16".to_string(),
+            format!("^Q{},{}", options.label_length_mm, options.label_gap_mm),
+            format!("^W{}", options.label_width_mm),
+            "^H10".to_string(),
+            "^P1".to_string(),
+            "^L".to_string(),
+            "Y0,0,TEXTLBL".to_string(),
             format!("Y{qr_x},{qr_y},QRLBL"),
             "E".to_string(),
         ],

@@ -69,6 +69,34 @@ pub fn build_qolip_cell_qr_command(epc: &str, cell_name: &str) -> Result<String,
         + "^XZ\n")
 }
 
+pub fn build_qolip_code_qr_command(
+    epc: &str,
+    item_name: &str,
+    qolip_code: &str,
+) -> Result<String, String> {
+    let epc = sanitize_zpl_text(epc.trim());
+    if epc.is_empty() {
+        return Err("qr payload is empty".to_string());
+    }
+    let item_name = sanitize_zpl_text(item_name.trim());
+    let item_name = if item_name.is_empty() { "-" } else { &item_name };
+    let qolip_code = sanitize_zpl_text(qolip_code.trim());
+    let qolip_code = if qolip_code.is_empty() { "-" } else { &qolip_code };
+
+    Ok("~PS\n".to_string()
+        + "^XA\n"
+        + "^LH0,0\n"
+        + "^FO8,8^A0N,30,26^FB784,1,0,C,0\n"
+        + &format!("^FD{item_name}^FS\n")
+        + "^FO120,56^BQN,2,11^FDLA,"
+        + &epc
+        + "^FS\n"
+        + "^FO8,352^A0N,30,26^FB784,1,0,C,0\n"
+        + &format!("^FD{qolip_code}^FS\n")
+        + "^PQ1\n"
+        + "^XZ\n")
+}
+
 pub fn build_label_only_print_command_with_weights(
     epc: &str,
     qty_text: &str,

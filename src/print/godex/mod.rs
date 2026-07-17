@@ -14,7 +14,9 @@ pub use bmp::{MonoBitmap, encode_mono_bmp};
 pub use executor::{GodexExecutionError, GodexTransport, execute_pack_render};
 pub use ezpl::build_direct_pack_label;
 pub use options::LabelOptions;
-pub use pack::{GodexPackRender, build_pack_render, build_qolip_cell_render};
+pub use pack::{
+    GodexPackRender, build_pack_render, build_qolip_cell_render, build_qolip_code_render,
+};
 pub use payload::{DEFAULT_QR_BASE_URL, encode_scan_payload};
 pub use progress_pack::build_progress_pack_render;
 pub use qr::render_qr_graphic;
