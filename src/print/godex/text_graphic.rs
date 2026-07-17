@@ -99,13 +99,13 @@ pub fn render_qolip_code_text_graphic(
     let mut remaining = name.as_str();
     for line_index in 0..2 {
         let (line, rest) = split_line(remaining, 22);
-        draw_centered_text(&mut canvas, line, 4 + line_index * 24, 3);
+        draw_centered_text(&mut canvas, line, line_index * 28, 3);
         if rest.is_empty() {
             break;
         }
         remaining = rest.trim_start();
     }
-    draw_centered_text(&mut canvas, &code, 352, 3);
+    draw_centered_text(&mut canvas, &code, 352, 2);
     encode_mono_bmp(&canvas.crop_ink())
 }
 
