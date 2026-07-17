@@ -96,7 +96,15 @@ pub fn render_qolip_code_text_graphic(
     let mut canvas = MonoBitmap::filled(label_width, 400, true);
     let name = sanitize_label_text(name).to_ascii_uppercase();
     let code = sanitize_label_text(code).to_ascii_uppercase();
-    draw_centered_text(&mut canvas, &name, 8, 3);
+    let mut remaining = name.as_str();
+    for line_index in 0..2 {
+        let (line, rest) = split_line(remaining, 22);
+        draw_centered_text(&mut canvas, line, 4 + line_index * 24, 3);
+        if rest.is_empty() {
+            break;
+        }
+        remaining = rest.trim_start();
+    }
     draw_centered_text(&mut canvas, &code, 352, 3);
     encode_mono_bmp(&canvas.crop_ink())
 }
