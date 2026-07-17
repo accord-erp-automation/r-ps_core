@@ -91,7 +91,7 @@ pub fn build_qolip_code_qr_command(
         + "^FO120,56^BQN,2,11^FDLA,"
         + &epc
         + "^FS\n"
-        + "^FO8,352^A0N,30,26^FB784,1,0,C,0\n"
+        + "^FO8,352^A0N,24,20^FB784,1,0,C,0\n"
         + &format!("^FD{qolip_code}^FS\n")
         + "^PQ1\n"
         + "^XZ\n")
