@@ -96,7 +96,7 @@ pub fn render_qolip_code_text_graphic(
     let mut canvas = MonoBitmap::filled(label_width, 400, true);
     let name = sanitize_label_text(name).to_ascii_uppercase();
     let code = sanitize_label_text(code).to_ascii_uppercase();
-    draw_centered_text(&mut canvas, &name, 8, 4);
+    draw_centered_text(&mut canvas, &name, 8, 2);
     draw_centered_text(&mut canvas, &code, 352, 4);
     encode_mono_bmp(&canvas.crop_ink())
 }
